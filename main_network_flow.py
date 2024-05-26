@@ -8,7 +8,7 @@ from enum import Enum
 from torch.utils.tensorboard import SummaryWriter
 from gymnasium.envs.registration import register
 from src.algos.a2c_stable_baselines import CustomMultiInputActorCriticPolicy
-from src.algos.stable_baselines_gcnn_feature_extractor import CustomMultiInputExtractor
+from algos.stable_baselines_message_passing_feature_extractor import CustomMultiInputExtractor
 from src.algos.sac_stable_baselines import CustomMultiInputSACPolicy
 from src.envs.stable_baselines_env_wrapper import MyDummyVecEnv
 
