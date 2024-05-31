@@ -137,6 +137,7 @@ class NetworkFlowEnv(gym.Env):
         metadata
         """
         # select action based on action_rl
+        action_rl = action_rl / np.sum(action_rl)
         action_dict = self.get_action_from_action_rl(action_rl)
         # copy commodity distribution from current time to next
         for n in self.region:

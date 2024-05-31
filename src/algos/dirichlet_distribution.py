@@ -44,7 +44,7 @@ class DirichletDistribution(Distribution):
 
     def sample(self) -> torch.Tensor:
         # potentially try out rsample for stability
-        return self.distribution.sample()
+        return self.distribution.rsample()
 
     def mode(self) -> torch.Tensor:
         return self.concentration / (self.concentration.sum(dim=1)[:, None])

@@ -9,33 +9,12 @@ from stable_baselines3.common.policies import ContinuousCritic
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 from src.algos.dirichlet_distribution import DirichletDistribution
+from src.algos.stable_baselines_gcnn import GCNExtractor
+from src.algos.stable_baselines_mpnn import MpnnExtractor
+
 
 
 class CustomSACActor(Actor):
-    """
-    Actor network (policy) for SAC.
-
-    :param observation_space: Observation space
-    :param action_space: Action space
-    :param net_arch: Network architecture
-    :param features_extractor: Network to extract features
-        (a CNN when using images, a nn.Flatten() layer otherwise)
-    :param features_dim: Number of features
-    :param activation_fn: Activation function
-    :param use_sde: Whether to use State Dependent Exploration or not
-    :param log_std_init: Initial value for the log standard deviation
-    :param full_std: Whether to use (n_features x n_actions) parameters
-        for the std instead of only (n_features,) when using gSDE.
-    :param use_expln: Use ``expln()`` function instead of ``exp()`` when using gSDE to ensure
-        a positive standard deviation (cf paper). It allows to keep variance
-        above zero and prevent it from growing too fast. In practice, ``exp()`` is usually enough.
-    :param clip_mean: Clip the mean output when using gSDE to avoid numerical instability.
-    :param normalize_images: Whether to normalize images or not,
-         dividing by 255.0 (True by default)
-    """
-
-    action_space: spaces.Box
-
     def __init__(
         self,
         observation_space: spaces.Space,
@@ -50,6 +29,11 @@ class CustomSACActor(Actor):
         use_expln: bool = False,
         clip_mean: float = 2.0,
         normalize_images: bool = True,
+        hidden_features_dim: int = 256,
+        node_features_dim: int = 13,
+        edge_features_dim: int = 1,
+        action_dim: int = 1,
+        extractor_type: str = "gcn" # TODO: make this an enum
     ):
         super(CustomSACActor, self).__init__(
             observation_space,
@@ -65,10 +49,11 @@ class CustomSACActor(Actor):
             clip_mean,
             normalize_images
         )
-        self.policy_net = nn.Sequential(
-            nn.Linear(features_dim, 1)
-        )
-        action_dim = self.action_space.shape[-1]
+        # don't include actions as input to network, so set action_dim = 0
+        if extractor_type == "gcn":
+            self.extractor = GCNExtractor(hidden_features_dim, node_features_dim, 0) 
+        elif extractor_type == "mpnn":
+            self.extractor = MpnnExtractor(hidden_features_dim, node_features_dim, edge_features_dim, 0)
         self.action_dist = DirichletDistribution(action_dim)
 
     def get_action_dist_params(self, obs: PyTorchObs) -> torch.Tensor:
@@ -79,19 +64,15 @@ class CustomSACActor(Actor):
         :return:
             concentration
         """
-        features = self.extract_features(obs, self.features_extractor)
-        a_logits = self.policy_net(features).squeeze(2)
-        concentration = F.softplus(a_logits)
-        concentration += torch.rand(concentration.shape) * 1e-20
-        return concentration
+        return self.extractor(obs)
 
     def forward(self, obs: PyTorchObs, deterministic: bool = False) -> torch.Tensor:
         concentration = self.get_action_dist_params(obs)
+        # TODO: move softplus here instead of in Dirichlet
         return self.action_dist.actions_from_params(concentration, deterministic=deterministic)
 
     def action_log_prob(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor]:
         concentration = self.get_action_dist_params(obs)
-        # return action and associated log prob
         return self.action_dist.log_prob_from_params(concentration)
 
 class CustomSACContinuousCritic(ContinuousCritic):
@@ -106,6 +87,11 @@ class CustomSACContinuousCritic(ContinuousCritic):
         normalize_images: bool = True,
         n_critics: int = 2,
         share_features_extractor: bool = True,
+        hidden_features_dim: int = 256,
+        node_features_dim: int = 13,
+        edge_features_dim: int = 1,
+        action_dim: int = 1,
+        extractor_type = "gcn"
     ):
         super(CustomSACContinuousCritic, self).__init__(
             observation_space,
@@ -118,19 +104,21 @@ class CustomSACContinuousCritic(ContinuousCritic):
             n_critics,
             share_features_extractor
         )
-
+        self.extractors = []
+        for idx in range(n_critics):
+            if extractor_type == "gcn":
+                extractor = GCNExtractor(hidden_features_dim, node_features_dim, action_dim) 
+            elif extractor_type == "mpnn":
+                extractor = MpnnExtractor(hidden_features_dim, node_features_dim, edge_features_dim, action_dim)
+            self.extractors.append(extractor)
+    
     def forward(self, obs: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor, ...]:
-        with torch.set_grad_enabled(not self.share_features_extractor):
-            features = self.extract_features(obs, self.features_extractor)
-            features = torch.sum(features, dim=1)
-        qvalue_input = torch.cat([features, actions], dim=1)
-        return tuple(q_net(qvalue_input) for q_net in self.q_networks)
+        with torch.set_grad_enabled(True):
+            return tuple(torch.sum(extractor(obs, actions), dim=1) for extractor in self.extractors)
 
     def q1_forward(self, obs: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            features = self.extract_features(obs, self.features_extractor)
-            features = torch.sum(features, dim=1)
-        return self.q_networks[0](torch.cat([features, actions], dim=1))
+            return torch.sum(self.extractors[0](obs, actions), dim=1)
 
 class CustomMultiInputSACPolicy(SACPolicy):
     def __init__(
@@ -151,7 +139,16 @@ class CustomMultiInputSACPolicy(SACPolicy):
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         n_critics: int = 2,
         share_features_extractor: bool = False,
+        hidden_features_dim: int = 256,
+        node_features_dim: int = 13,
+        action_dim: int = 1,
+        extractor_type: str = "gcn"
     ):
+        self.squash_output = False
+        self.hidden_features_dim = hidden_features_dim
+        self.node_features_dim = node_features_dim
+        self.action_dim = action_dim
+        self.extractor_type = extractor_type
         super(CustomMultiInputSACPolicy, self).__init__(
             observation_space,
             action_space,
@@ -171,10 +168,32 @@ class CustomMultiInputSACPolicy(SACPolicy):
             share_features_extractor
         )
 
+    @SACPolicy.squash_output.setter
+    def squash_output(self, new_val: bool):
+        self._squash_output = new_val
+
+    def make_features_extractor(self) -> BaseFeaturesExtractor:
+        """Helper method to create a features extractor."""
+        return None
+
+    def _update_features_extractor(
+        self,
+        net_kwargs: Dict[str, Any],
+        features_extractor: Optional[BaseFeaturesExtractor] = None,
+    ) -> Dict[str, Any]:
+        # we are not using features extractor
+        net_kwargs = net_kwargs.copy()
+        net_kwargs.update(dict(features_extractor=features_extractor, features_dim=0))
+        return net_kwargs
+    
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        return CustomSACActor(**actor_kwargs).to(self.device)
+        return CustomSACActor(**actor_kwargs, hidden_features_dim=self.hidden_features_dim,
+                              node_features_dim=self.node_features_dim, action_dim=self.action_dim,
+                              extractor_type=self.extractor_type).to(self.device)
     
     def make_critic(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> ContinuousCritic:
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
-        return CustomSACContinuousCritic(**critic_kwargs).to(self.device)
+        return CustomSACContinuousCritic(**critic_kwargs, hidden_features_dim=self.hidden_features_dim,
+                                         node_features_dim=self.node_features_dim, action_dim=self.action_dim,
+                                         extractor_type=self.extractor_type).to(self.device)
