@@ -15,13 +15,19 @@ class GCNExtractor(nn.Module):
         self.lin3 = nn.Linear(hidden_features_dim, 1)
 
     def forward(self, observations, actions=None) -> torch.Tensor:
+        # hack to get a device, TODO fix this
+        device = self.lin1.weight.device
         x = observations['node_features'].type(torch.FloatTensor)
         if actions is not None:
+            if len(actions.shape) < 3:
+                actions = actions[:,:,None]
             x = torch.cat([x, actions], dim=-1)
         num_nodes = x.shape[1]
         edge_index = observations['edge_index'].type(torch.LongTensor)
         data_list = [Data(x=x[i], edge_index=edge_index[i]) for i in range(x.shape[0])]
         batch = Batch.from_data_list(data_list)
+        batch.x = batch.x.to(device)
+        batch.edge_index = batch.edge_index.to(device)
         x = F.relu(self.conv1(batch.x, batch.edge_index))
         x = x + batch.x
         x = F.leaky_relu(self.lin1(x))

@@ -37,7 +37,9 @@ beta_dict = {
     "shenzhen_downtown_west": 0.5,
 }
 
-CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
+# TODO: make this configurable
+CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
+#CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
 
 class GNNParser:
     """
@@ -140,8 +142,9 @@ class GNNParser:
 class AMoD(gym.Env):
     # initialization
     def __init__(
-        self, beta=0.2, city="shenzhen_downtown_west", reward_scale_factor=0.1
+        self, beta=0.2, city="san_francisco", reward_scale_factor=0.01
     ):  # updated to take scenario and beta (cost for rebalancing) as input
+        print("Running for city ", city)
         self.json_file = f"data/scenario_{city}.json"
         self.scenario = Scenario(
             json_file=self.json_file,

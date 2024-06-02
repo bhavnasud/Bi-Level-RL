@@ -27,8 +27,9 @@ random.seed(104)
 
 writer = SummaryWriter()
 
-
-device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+# TODO: figure out GPU issue
+#device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+device = "cpu"
 
 class EvaluationCallback(BaseCallback):
     def __init__(self, eval_env, tensorboard_writer, eval_freq=1000, save_freq=10000, verbose=1):
@@ -89,25 +90,26 @@ policy_kwargs = dict(
 if RL_ALGORITHM == RLAlgorithm.A2C:
     model = A2C(CustomMultiInputActorCriticPolicy,
                 env, policy_kwargs=policy_kwargs, verbose=1,
-                use_rms_prop=False, learning_rate=1e-3, ent_coef=0.3)
+                use_rms_prop=False, learning_rate=1e-3, ent_coef=0.3, device=device)
     eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000)
     if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
         print("Loading saved model from path ", CHECKPOINT_PATH)
-        model = A2C.load(CHECKPOINT_PATH, env=env)
+        model = A2C.load(CHECKPOINT_PATH, env=env, device=device)
 elif RL_ALGORITHM == RLAlgorithm.PPO:
     model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
-                verbose=1, learning_rate=1e-3, ent_coef=0.3)
+                verbose=1, learning_rate=1e-3, ent_coef=0.3, device=device)
     eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000)
     if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
         print("Loading saved model from path ", CHECKPOINT_PATH)
-        model = PPO.load(CHECKPOINT_PATH, env=env)
+        model = PPO.load(CHECKPOINT_PATH, env=env, device=device)
 else:
+    print("initializing SAC with device ", device)
     model = SAC(CustomMultiInputSACPolicy, env, policy_kwargs=policy_kwargs,
                 verbose=1, learning_rate=1e-3, ent_coef=0.3, batch_size=100,
-                gamma=0.99, learning_starts=10)
+                gamma=0.99, learning_starts=10, device=device)
     eval_callback = EvaluationCallback(env, writer, eval_freq=100, save_freq=1000)
     if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
         print("Loading saved model from path ", CHECKPOINT_PATH)
-        model = SAC.load(CHECKPOINT_PATH, env=env)
+        model = SAC.load(CHECKPOINT_PATH, env=env, device=device)
 
 model.learn(total_timesteps=1000000000, callback=eval_callback)

@@ -13,7 +13,6 @@ from src.algos.stable_baselines_gcnn import GCNExtractor
 from src.algos.stable_baselines_mpnn import MpnnExtractor
 
 
-
 class CustomSACActor(Actor):
     def __init__(
         self,
@@ -33,7 +32,7 @@ class CustomSACActor(Actor):
         node_features_dim: int = 13,
         edge_features_dim: int = 1,
         action_dim: int = 1,
-        extractor_type: str = "gcn" # TODO: make this an enum
+        extractor_type: str = "gcn", # TODO: make this an enum
     ):
         super(CustomSACActor, self).__init__(
             observation_space,
@@ -51,7 +50,7 @@ class CustomSACActor(Actor):
         )
         # don't include actions as input to network, so set action_dim = 0
         if extractor_type == "gcn":
-            self.extractor = GCNExtractor(hidden_features_dim, node_features_dim, 0) 
+            self.extractor = GCNExtractor(hidden_features_dim, node_features_dim, 0)
         elif extractor_type == "mpnn":
             self.extractor = MpnnExtractor(hidden_features_dim, node_features_dim, edge_features_dim, 0)
         self.action_dist = DirichletDistribution(action_dim)
@@ -69,7 +68,8 @@ class CustomSACActor(Actor):
     def forward(self, obs: PyTorchObs, deterministic: bool = False) -> torch.Tensor:
         concentration = self.get_action_dist_params(obs)
         # TODO: move softplus here instead of in Dirichlet
-        return self.action_dist.actions_from_params(concentration, deterministic=deterministic)
+        return_val = self.action_dist.actions_from_params(concentration, deterministic=deterministic) 
+        return return_val
 
     def action_log_prob(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor]:
         concentration = self.get_action_dist_params(obs)
@@ -91,7 +91,7 @@ class CustomSACContinuousCritic(ContinuousCritic):
         node_features_dim: int = 13,
         edge_features_dim: int = 1,
         action_dim: int = 1,
-        extractor_type = "gcn"
+        extractor_type = "gcn",
     ):
         super(CustomSACContinuousCritic, self).__init__(
             observation_space,
@@ -107,7 +107,7 @@ class CustomSACContinuousCritic(ContinuousCritic):
         self.extractors = []
         for idx in range(n_critics):
             if extractor_type == "gcn":
-                extractor = GCNExtractor(hidden_features_dim, node_features_dim, action_dim) 
+                extractor = GCNExtractor(hidden_features_dim, node_features_dim, action_dim)
             elif extractor_type == "mpnn":
                 extractor = MpnnExtractor(hidden_features_dim, node_features_dim, edge_features_dim, action_dim)
             self.extractors.append(extractor)

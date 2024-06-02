@@ -4,7 +4,7 @@ from torch.distributions import Dirichlet
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
-from stable_baselines3.common.distributions import Distribution
+from stable_baselines3.common.distributions import Distribution, sum_independent_dims
 
 SelfDirichletDistribution = TypeVar("SelfDirichletDistribution", bound="DirichletDistribution")
 
@@ -31,20 +31,21 @@ class DirichletDistribution(Distribution):
     
     def proba_distribution(self: SelfDirichletDistribution, action_logits: torch.Tensor) -> SelfDirichletDistribution:
         concentration = F.softplus(action_logits)
-        concentration += torch.rand(concentration.shape) * 1e-20
+        concentration += ((torch.rand(concentration.shape) * 1e-20) + 1e-20)
         self.concentration = concentration
-        self.distribution = Dirichlet(concentration)
+        self.distribution = Dirichlet(concentration.squeeze())
         return self
 
     def log_prob(self, actions: torch.Tensor) -> torch.Tensor:
-        return self.distribution.log_prob(actions)
+        log_prob = self.distribution.log_prob(actions)
+        return sum_independent_dims(log_prob)
 
     def entropy(self) -> torch.Tensor:
         return self.distribution.entropy()
 
     def sample(self) -> torch.Tensor:
-        # potentially try out rsample for stability
-        return self.distribution.rsample()
+        result = self.distribution.sample()
+        return result
 
     def mode(self) -> torch.Tensor:
         return self.concentration / (self.concentration.sum(dim=1)[:, None])
