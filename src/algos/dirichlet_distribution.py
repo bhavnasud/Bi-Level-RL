@@ -22,7 +22,6 @@ class DirichletDistribution(Distribution):
     def proba_distribution_net(self, latent_dim: int) -> nn.Module:
        """
         Create the layer that represents the distribution:
-        You can then get probabilities using a softplus.
 
         :return:
         """
@@ -30,15 +29,16 @@ class DirichletDistribution(Distribution):
        return action_logits
     
     def proba_distribution(self: SelfDirichletDistribution, action_logits: torch.Tensor) -> SelfDirichletDistribution:
-        concentration = F.softplus(action_logits)
-        concentration += ((torch.rand(concentration.shape) * 1e-20) + 1e-20)
-        self.concentration = concentration
-        self.distribution = Dirichlet(concentration.squeeze())
+        action_logits = F.softplus(action_logits)
+        self.concentration = action_logits + (torch.rand(action_logits.shape) * 1e-20)
+        if torch.min(self.concentration) <= 0:
+            self.concentration += 1e-20
+        self.distribution = Dirichlet(self.concentration.squeeze())
         return self
 
     def log_prob(self, actions: torch.Tensor) -> torch.Tensor:
         log_prob = self.distribution.log_prob(actions)
-        return sum_independent_dims(log_prob)
+        return log_prob
 
     def entropy(self) -> torch.Tensor:
         return self.distribution.entropy()
@@ -48,12 +48,13 @@ class DirichletDistribution(Distribution):
         return result
 
     def mode(self) -> torch.Tensor:
-        return self.concentration / (self.concentration.sum(dim=1)[:, None])
+        return (self.concentration / (self.concentration.sum(dim=1)[:, None]) + 1e-20)
 
     def actions_from_params(self, action_logits: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
         # Update the proba distribution
         self.proba_distribution(action_logits)
-        return self.get_actions(deterministic=deterministic)
+        return_val = self.get_actions(deterministic=deterministic)
+        return return_val
 
     def log_prob_from_params(self, action_logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         actions = self.actions_from_params(action_logits)

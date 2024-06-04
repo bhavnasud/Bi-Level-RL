@@ -38,8 +38,8 @@ beta_dict = {
 }
 
 # TODO: make this configurable
-CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
-#CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
+# CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
+CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
 
 class GNNParser:
     """

@@ -8,37 +8,28 @@ from enum import Enum
 from torch.utils.tensorboard import SummaryWriter
 from gymnasium.envs.registration import register
 from src.algos.a2c_stable_baselines import CustomMultiInputActorCriticPolicy
-from src.algos.stable_baselines_message_passing_feature_extractor import CustomMultiInputExtractor
-from src.algos.sac_stable_baselines import CustomMultiInputSACPolicy
+from src.algos.sac_stable_baselines import CustomSACPolicy
 from src.envs.stable_baselines_env_wrapper import MyDummyVecEnv
+from src.misc.utils import FeatureExtractor, RLAlgorithm
+from src.algos.stable_baselines_gcn_2 import CustomMultiInputExtractorActor
 
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import A2C, SAC, PPO
 
-class RLAlgorithm(Enum):
-    A2C = 0
-    PPO = 1
-    SAC = 2
-
-RL_ALGORITHM = RLAlgorithm.A2C
 CHECKPOINT_PATH = ""
 
 
 random.seed(104)
 
-writer = SummaryWriter()
-
-
-device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
-
 class EvaluationCallback(BaseCallback):
-    def __init__(self, eval_env, tensorboard_writer, eval_freq=1000, save_freq=10000, verbose=1):
+    def __init__(self, eval_env, tensorboard_writer, eval_freq=1000, save_freq=10000, verbose=1,
+                 rl_algorithm=RLAlgorithm.A2C, feature_extractor=FeatureExtractor.GCN):
         super().__init__(verbose)
         self.eval_env = eval_env
         self.tensorboard_writer = tensorboard_writer
         self.eval_freq = eval_freq
         self.save_freq = save_freq
-        self.save_path = f"./network_flow_checkpoints/{RL_ALGORITHM.name}"
+        self.save_path = f"./network_flow_checkpoints/{rl_algorithm.name}/{feature_extractor.name}/"
     
     def _on_step(self) -> bool:
         if self.num_timesteps % self.eval_freq == 0 or self.num_timesteps == 1:
@@ -56,7 +47,7 @@ class EvaluationCallback(BaseCallback):
 
 
     def evaluate_model(self):
-        env.env_method("set_start_to_end_test", True)
+        self.eval_env.env_method("set_start_to_end_test", True)
         obs = self.eval_env.reset()
         episode_reward = 0
         done = False
@@ -64,43 +55,61 @@ class EvaluationCallback(BaseCallback):
             action, _ = self.model.predict(obs, deterministic=True)
             obs, reward, done, info = self.eval_env.step(action)
             episode_reward += reward
-        env.env_method("set_start_to_end_test", False)
-        env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
+        self.eval_env.env_method("set_start_to_end_test", False)
+        # self.eval_env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
         return episode_reward
 
-# Register the environment
-register(id='CustomEnv-v0', entry_point=NetworkFlowEnv)
+def run_training(feature_extractor, rl_algorithm):
+    run_dir = os.path.join('network_flow_runs', f'{rl_algorithm.name}/{feature_extractor.name}')
+    os.makedirs(run_dir, exist_ok=True)
+    writer = SummaryWriter(run_dir)
 
-# Create the environment
-env = MyDummyVecEnv([lambda: gym.make('CustomEnv-v0')])
+    # Register the environment
+    register(id='CustomEnv-v0', entry_point=NetworkFlowEnv)
 
-policy_kwargs = dict(
-    features_extractor_class=CustomMultiInputExtractor,
-    features_extractor_kwargs=dict(hidden_features_dim=8, node_features_dim=2, edge_features_dim=1),
-    share_features_extractor=False,
-)
+    # Create the environment
+    env = MyDummyVecEnv([lambda: gym.make('CustomEnv-v0')])
 
-if RL_ALGORITHM == RLAlgorithm.A2C:
-    model = A2C(CustomMultiInputActorCriticPolicy,
-                env, policy_kwargs=policy_kwargs, verbose=1,
-                use_rms_prop=False, learning_rate=1e-4, ent_coef=0.01)
-    eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000)
-    if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
-        print("Loading saved model from path ", CHECKPOINT_PATH)
-        model = A2C.load(CHECKPOINT_PATH, env=env)
-elif RL_ALGORITHM == RLAlgorithm.PPO:
-    model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
-                verbose=1, learning_rate=1e-4, ent_coef=0.01)
-    eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000)
-    if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
-        print("Loading saved model from path ", CHECKPOINT_PATH)
-        model = PPO.load(CHECKPOINT_PATH, env=env)
-else:
-    model = SAC(CustomMultiInputSACPolicy, env, policy_kwargs=policy_kwargs,
-                verbose=1, learning_rate=1e-4, ent_coef=0.01)
-    eval_callback = EvaluationCallback(env, writer, eval_freq=100, save_freq=1000)
-    if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
-        print("Loading saved model from path ", CHECKPOINT_PATH)
-        model = SAC.load(CHECKPOINT_PATH, env=env)
 
-model.learn(total_timesteps=1000000000, callback=eval_callback)
+    policy_kwargs = dict(
+        # hidden_features_dim=8,
+        # node_features_dim=2,
+        # edge_features_dim=1,
+        # num_nodes=env.envs[0].nregion,
+        # action_dim=1,
+        # extractor_type=feature_extractor
+        features_extractor_class=CustomMultiInputExtractorActor
+    )
+
+    if rl_algorithm == RLAlgorithm.A2C:
+        model = A2C(CustomMultiInputActorCriticPolicy,
+                    env, policy_kwargs=policy_kwargs, verbose=1,
+                    use_rms_prop=False, learning_rate=1e-4, ent_coef=0.01)
+        eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
+                                           rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
+        if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
+            print("Loading saved model from path ", CHECKPOINT_PATH)
+            model = A2C.load(CHECKPOINT_PATH, env=env)
+    elif rl_algorithm == RLAlgorithm.PPO:
+        model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
+                    verbose=1, learning_rate=1e-4, ent_coef=0.01)
+        eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
+                                           rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
+        if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
+            print("Loading saved model from path ", CHECKPOINT_PATH)
+            model = PPO.load(CHECKPOINT_PATH, env=env)
+    else:
+        model = SAC(CustomSACPolicy, env, policy_kwargs=policy_kwargs,
+                    verbose=1, learning_rate=1e-4, ent_coef=0.01)
+        eval_callback = EvaluationCallback(env, writer, eval_freq=100, save_freq=1000,
+                                           rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
+        if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
+            print("Loading saved model from path ", CHECKPOINT_PATH)
+            model = SAC.load(CHECKPOINT_PATH, env=env)
+
+    model.learn(total_timesteps=2000000, callback=eval_callback)
+
+# TODO: make these args
+for algorithm in [RLAlgorithm.SAC]:
+    for extractor in [FeatureExtractor.MPNN]:
+        run_training(extractor, algorithm)

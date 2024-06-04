@@ -16,8 +16,6 @@ from torch_geometric.utils import to_dense_adj
 import torch.nn.functional as F
 from matplotlib.lines import Line2D
 
-
-
 # Function to generate a random connected graph that is not complete
 def generate_connected_graph(num_nodes):
     G = nx.DiGraph()
