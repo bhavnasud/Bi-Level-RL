@@ -14,33 +14,41 @@ from src.algos.stable_baselines_gcn import GCNCriticExtractor
 from src.algos.stable_baselines_mpnn import MPNNCriticExtractor
 
     
+class CustomSACActor(Actor):
+    def __init__(
+        self,
+        *args,
+        **kwargs
+    ):
+        super(CustomSACActor, self).__init__(
+            *args, **kwargs
+        )
+        self.action_dist = DirichletDistribution(kwargs["action_space"].shape[1])
+    
+    def get_action_dist_params(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Get the parameters for the action distribution.
+
+        :param obs:
+        :return:
+            Concentration
+        """
+        features = self.extract_features(obs, self.features_extractor)
+        latent_pi = self.latent_pi(features)
+        action_logits = self.mu(latent_pi)
+        return action_logits
+
+    def forward(self, obs: PyTorchObs, deterministic: bool = False) -> torch.Tensor:
+        action_logits = self.get_action_dist_params(obs)
+        # Note: the action is squashed
+        return self.action_dist.actions_from_params(action_logits, deterministic=deterministic)
+
+    def action_log_prob(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor]:
+        action_logits = self.get_action_dist_params(obs)
+        # return action and associated log prob
+        return self.action_dist.log_prob_from_params(action_logits)
+
 class CustomContinuousCritic(ContinuousCritic):
-    """
-    Critic network(s) for DDPG/SAC/TD3.
-    It represents the action-state value function (Q-value function).
-    Compared to A2C/PPO critics, this one represents the Q-value
-    and takes the continuous action as input. It is concatenated with the state
-    and then fed to the network which outputs a single value: Q(s, a).
-    For more recent algorithms like SAC/TD3, multiple networks
-    are created to give different estimates.
-
-    By default, it creates two critic networks used to reduce overestimation
-    thanks to clipped Q-learning (cf TD3 paper).
-
-    :param observation_space: Observation space
-    :param action_space: Action space
-    :param net_arch: Network architecture
-    :param features_extractor: Network to extract features
-        (a CNN when using images, a nn.Flatten() layer otherwise)
-    :param features_dim: Number of features
-    :param activation_fn: Activation function
-    :param normalize_images: Whether to normalize images or not,
-         dividing by 255.0 (True by default)
-    :param n_critics: Number of critic networks to create.
-    :param share_features_extractor: Whether the features extractor is shared or not
-        between the actor and the critic (this saves computation time)
-    """
-
     def forward(self, obs: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor, ...]:
         with torch.set_grad_enabled(True):
             # include actions as input to feature extractor
@@ -68,11 +76,9 @@ class CustomSACPolicy(SACPolicy):
         super(CustomSACPolicy, self).__init__(*args, **kwargs)
         self.action_dist = DirichletDistribution(1)
 
-    # def make_critics(self, observation_space: spaces.Space, action_space: spaces.Space) -> None:
-    #     self.critic.qf1 = CustomCriticNetwork(observation_space, action_space, self.net_arch[0])
-    #     self.critic.qf2 = CustomCriticNetwork(observation_space, action_space, self.net_arch[0])
-    #     self.critic_target.qf1 = CustomCriticNetwork(observation_space, action_space, self.net_arch[0])
-    #     self.critic_target.qf2 = CustomCriticNetwork(observation_space, action_space, self.net_arch[0])
+    # def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
+    #     actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
+    #     return CustomSACActor(**actor_kwargs).to(self.device)
 
     def make_critic(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> ContinuousCritic:
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
@@ -87,15 +93,17 @@ class CustomSACPolicy(SACPolicy):
         )
 
 
-        # self.critic = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
-        #                                                                      action_dim=self.action_space.shape[1]))
-        self.critic = self.make_critic(features_extractor=MPNNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
-                                                                              action_dim=self.action_space.shape[1]))
+        self.critic = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
+                                                                             action_dim=self.action_space.shape[1]))
+        # self.critic = self.make_critic(features_extractor=MPNNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
+        #                                                                       action_dim=self.action_space.shape[1]))
         critic_parameters = list(self.critic.parameters())
 
         # Critic target should not share the features extractor with critic
         self.critic_target = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
                                                                                     action_dim=self.action_space.shape[1]))
+        # self.critic_target = self.make_critic(features_extractor=MPNNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
+        #                                                                             action_dim=self.action_space.shape[1]))
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         self.critic.optimizer = self.optimizer_class(

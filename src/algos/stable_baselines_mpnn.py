@@ -48,9 +48,9 @@ class MPNNActorExtractor(BaseFeaturesExtractor):
         num_nodes = observation_space["node_features"].shape[0]
         node_features_dim = observation_space["node_features"].shape[1]
         edge_features_dim = observation_space["edge_features"].shape[1]
-        super(MPNNActorExtractor, self).__init__(observation_space, (num_nodes * hidden_features_dim))
+        super(MPNNActorExtractor, self).__init__(observation_space, (num_nodes * (hidden_features_dim + node_features_dim)))
         self.hidden_features_dim = hidden_features_dim
-        self.mpn = MPNN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
+        self.mpnn = MPNN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
                         edge_features_dim=edge_features_dim)
     
     def forward(self, observations) -> torch.Tensor:
@@ -65,7 +65,7 @@ class MPNNCriticExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space, hidden_features_dim: int = 1, action_dim=0):
         node_features_dim = observation_space["node_features"].shape[1]
         edge_features_dim = observation_space["edge_features"].shape[1]
-        super(MPNNCriticExtractor, self).__init__(observation_space, hidden_features_dim)
+        super(MPNNCriticExtractor, self).__init__(observation_space, hidden_features_dim + node_features_dim + action_dim)
         self.mpnn = MPNN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim+action_dim,
                          edge_features_dim=edge_features_dim)
 

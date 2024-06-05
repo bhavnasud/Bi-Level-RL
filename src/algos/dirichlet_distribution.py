@@ -26,6 +26,7 @@ class DirichletDistribution(Distribution):
         :return:
         """
        action_logits = nn.Identity()
+    #    action_logits = nn.Linear(latent_dim, self.action_dim)
        return action_logits
     
     def proba_distribution(self: SelfDirichletDistribution, action_logits: torch.Tensor) -> SelfDirichletDistribution:
