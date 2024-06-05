@@ -11,8 +11,9 @@ from src.algos.a2c_stable_baselines import CustomMultiInputActorCriticPolicy
 from src.algos.sac_stable_baselines import CustomSACPolicy
 from src.envs.stable_baselines_env_wrapper import MyDummyVecEnv
 from src.misc.utils import FeatureExtractor, RLAlgorithm
-from src.algos.stable_baselines_mpnn import MPNNActorExtractor
-from src.algos.stable_baselines_gcn import GCNActorExtractor
+from src.algos.stable_baselines_mpnn import MPNNExtractor
+from src.algos.stable_baselines_gcn import GCNExtractor
+from src.algos.stable_baselines_mlp import MLPExtractor
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import A2C, SAC, PPO
 
@@ -59,7 +60,7 @@ class EvaluationCallback(BaseCallback):
         # self.eval_env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
         return episode_reward
 
-def run_training(feature_extractor, rl_algorithm):
+def run_training(feature_extractor, rl_algorithm, total_timesteps=20000):
     run_dir = os.path.join('network_flow_runs', f'{rl_algorithm.name}/{feature_extractor.name}')
     os.makedirs(run_dir, exist_ok=True)
     writer = SummaryWriter(run_dir)
@@ -70,6 +71,12 @@ def run_training(feature_extractor, rl_algorithm):
     # Create the environment
     env = MyDummyVecEnv([lambda: gym.make('CustomEnv-v0')])
 
+    if feature_extractor == FeatureExtractor.GCN:
+        features_extractor_class = GCNExtractor
+    elif feature_extractor == FeatureExtractor.MPNN:
+        features_extractor_class = MPNNExtractor
+    else:
+        features_extractor_class = MLPExtractor
 
     policy_kwargs = dict(
         # hidden_features_dim=8,
@@ -78,10 +85,11 @@ def run_training(feature_extractor, rl_algorithm):
         # num_nodes=env.envs[0].nregion,
         # action_dim=1,
         # extractor_type=feature_extractor
-        features_extractor_class=GCNActorExtractor,
+        features_extractor_class=features_extractor_class,
         # features_extractor_class=MPNNActorExtractor,
         features_extractor_kwargs={
-            "hidden_features_dim": 11
+            "hidden_features_dim": 11,
+            "num_nodes": env.envs[0].nregion
         }
     )
 
@@ -111,9 +119,13 @@ def run_training(feature_extractor, rl_algorithm):
             print("Loading saved model from path ", CHECKPOINT_PATH)
             model = SAC.load(CHECKPOINT_PATH, env=env)
 
-    model.learn(total_timesteps=2000000, callback=eval_callback)
+    model.learn(total_timesteps=total_timesteps, callback=eval_callback)
 
 # TODO: make these args
-for algorithm in [RLAlgorithm.SAC]:
-    for extractor in [FeatureExtractor.GCN]:
-        run_training(extractor, algorithm)
+for algorithm in [RLAlgorithm.SAC, RLAlgorithm.A2C]:
+    for extractor in [FeatureExtractor.MPNN, FeatureExtractor.GCN, FeatureExtractor.MLP]:
+        if algorithm == RLAlgorithm.A2C:
+            run_training(extractor, algorithm, 2000000)
+        else:
+            run_training(extractor, algorithm, 100000)
+

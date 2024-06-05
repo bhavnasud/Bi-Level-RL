@@ -13,7 +13,9 @@ from src.algos.a2c_stable_baselines import CustomMultiInputActorCriticPolicy
 from src.algos.sac_stable_baselines import CustomSACPolicy
 from src.envs.stable_baselines_env_wrapper import MyDummyVecEnv
 from src.misc.utils import FeatureExtractor, RLAlgorithm
-from src.algos.stable_baselines_gcn_2 import CustomMultiInputExtractorActor
+from src.algos.stable_baselines_gcn import GCNExtractor
+from src.algos.stable_baselines_mpnn import MPNNExtractor
+from src.algos.stable_baselines_mlp import MLPExtractor
 
 
 CHECKPOINT_PATH = ""
@@ -82,6 +84,12 @@ def run_training(feature_extractor, rl_algorithm):
     # Create the environment
     env = MyDummyVecEnv([lambda: gym.make('CustomEnv-v0')])
 
+    if feature_extractor == FeatureExtractor.GCN:
+        features_extractor_class = GCNExtractor
+    elif feature_extractor == FeatureExtractor.MPNN:
+        features_extractor_class = MPNNExtractor
+    else:
+        features_extractor_class = MLPExtractor
 
     policy_kwargs = dict(
         # hidden_features_dim=8,
@@ -90,9 +98,15 @@ def run_training(feature_extractor, rl_algorithm):
         # num_nodes=env.envs[0].nregion,
         # action_dim=1,
         # extractor_type=feature_extractor
-        features_extractor_class=CustomMultiInputExtractorActor,
-        features_extractor_kwargs={"num_nodes": 10} # TODO: don't hardcode this
+        features_extractor_class=features_extractor_class,
+        # features_extractor_class=MPNNActorExtractor,
+        features_extractor_kwargs={
+            "hidden_features_dim": 256,
+            "num_nodes": env.envs[0].nregion
+        }
     )
+
+
 
     if rl_algorithm == RLAlgorithm.A2C:
         model = A2C(CustomMultiInputActorCriticPolicy,

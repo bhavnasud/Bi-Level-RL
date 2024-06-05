@@ -20,13 +20,19 @@ class EdgeConv(MessagePassing):
         tmp = torch.cat([x_i, x_j, edge_attr], dim=1)
         return self.mlp(tmp)
 
-class MPNN(nn.Module):
-    def __init__(self, hidden_features_dim: int = 1, node_features_dim: int = 1, edge_features_dim: int = 1):
-        super(MPNN, self).__init__()
-        self.conv1 = EdgeConv(node_features_dim, edge_features_dim, hidden_features_dim)
+class MPNNExtractor(BaseFeaturesExtractor):
+    """
+    :param observation_space: (gym.Space)
+    """
+    def __init__(self, observation_space, hidden_features_dim: int = 1, action_dim: int = 0,
+                 num_nodes: int = 1):
+        node_features_dim = observation_space["node_features"].shape[1]
+        edge_features_dim = observation_space["edge_features"].shape[1]
+        super(MPNNExtractor, self).__init__(observation_space, hidden_features_dim)
+        self.conv1 = EdgeConv(node_features_dim + action_dim, edge_features_dim, hidden_features_dim)
         self.conv2 = EdgeConv(hidden_features_dim, 1, hidden_features_dim)
         self.conv3 = EdgeConv(hidden_features_dim, 1, hidden_features_dim)
-        self.lin1 = nn.Linear(hidden_features_dim + node_features_dim, hidden_features_dim)
+        self.lin1 = nn.Linear(hidden_features_dim + node_features_dim + action_dim, hidden_features_dim)
         self.lin2 = nn.Linear(hidden_features_dim, hidden_features_dim)
     
     def forward(self, observations) -> torch.Tensor:
@@ -43,41 +49,4 @@ class MPNN(nn.Module):
         x = F.leaky_relu(self.lin1(x))
         x = F.leaky_relu(self.lin2(x))
         x = x.reshape(-1, num_nodes, x.shape[1])
-        return x
-
-class MPNNActorExtractor(BaseFeaturesExtractor):
-    """
-    :param observation_space: (gym.Space)
-    """
-    def __init__(self, observation_space, hidden_features_dim: int = 1):
-        num_nodes = observation_space["node_features"].shape[0]
-        node_features_dim = observation_space["node_features"].shape[1]
-        edge_features_dim = observation_space["edge_features"].shape[1]
-        # super(MPNNActorExtractor, self).__init__(observation_space, (num_nodes * (hidden_features_dim + node_features_dim)))
-        super(MPNNActorExtractor, self).__init__(observation_space, (num_nodes * hidden_features_dim))
-        self.hidden_features_dim = hidden_features_dim
-        self.mpnn = MPNN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-                        edge_features_dim=edge_features_dim)
-    
-    def forward(self, observations) -> torch.Tensor:
-        x = self.mpnn(observations)
-        x = torch.flatten(x, start_dim=1)
-        return x
-
-class MPNNCriticExtractor(BaseFeaturesExtractor):
-    """
-    :param observation_space: (gym.Space)
-    """
-    def __init__(self, observation_space, hidden_features_dim: int = 1, action_dim=0):
-        node_features_dim = observation_space["node_features"].shape[1]
-        edge_features_dim = observation_space["edge_features"].shape[1]
-        # super(MPNNCriticExtractor, self).__init__(observation_space, hidden_features_dim + node_features_dim + action_dim)
-        super(MPNNCriticExtractor, self).__init__(observation_space, hidden_features_dim)
-        self.mpnn = MPNN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim+action_dim,
-                         edge_features_dim=edge_features_dim)
-
-    def forward(self, observations) -> torch.Tensor:
-        x = self.mpnn(observations)
-        # sum over nodes
-        x = torch.sum(x, dim=1)
         return x

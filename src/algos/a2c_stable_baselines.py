@@ -122,44 +122,49 @@ import torch
 import torch.nn as nn
 from src.algos.dirichlet_distribution import DirichletDistribution
 from stable_baselines3.common.type_aliases import Schedule
-
+from typing import Tuple
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import MultiInputActorCriticPolicy
-from src.algos.stable_baselines_gcn import GCNCriticExtractor
 
-# class CustomNetwork(nn.Module):
-#     """
-#     Custom network for policy and value function.
-#     It receives as input the features extracted by the feature extractor.
+class CustomNetwork(nn.Module):
+    """
+    Custom network for policy and value function.
+    It receives as input the features extracted by the feature extractor.
 
-#     :param feature_dim: dimension of the features extracted with the features_extractor (e.g. features from a CNN)
-#     :param last_layer_dim_pi: (int) number of units for the last layer of the policy network
-#     :param last_layer_dim_vf: (int) number of units for the last layer of the value network
-#     """
+    :param feature_dim: dimension of the features extracted with the features_extractor (e.g. features from a CNN)
+    :param last_layer_dim_pi: (int) number of units for the last layer of the policy network
+    :param last_layer_dim_vf: (int) number of units for the last layer of the value network
+    """
 
-#     def __init__(
-#         self,
-#         feature_dim: int,
-#     ):
-#         super(CustomNetwork, self).__init__()
+    def __init__(
+        self,
+        feature_dim: int,
+    ):
+        super(CustomNetwork, self).__init__()
 
-#         # Policy network
-#         self.policy_net = nn.Sequential(
-#             nn.Linear(feature_dim, 1)
-#         )
-#         # Value network
-#         self.value_net = nn.Sequential(
-#             nn.Linear(feature_dim, 1)
-#         )
-
-#     def forward_actor(self, features: torch.Tensor) -> torch.Tensor:
-#         a_probs = self.policy_net(features).squeeze(2)
-#         return a_probs
+        # Policy network
+        self.policy_net = nn.Sequential(
+            nn.Linear(feature_dim, 1)
+        )
+        # Value network
+        self.value_net = nn.Sequential(
+            nn.Linear(feature_dim, 1)
+        )
     
-#     def forward_critic(self, features: torch.Tensor) -> torch.Tensor:
-#         features = torch.sum(features, dim=1)
-#         return_val = self.value_net(features)
-#         return return_val
+    def forward(self, features: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        :return: latent_policy, latent_value of the specified network.
+        """
+        return self.forward_actor(features), self.forward_critic(features)
+
+    def forward_actor(self, features: torch.Tensor) -> torch.Tensor:
+        a_probs = self.policy_net(features).squeeze(2)
+        return a_probs
+    
+    def forward_critic(self, features: torch.Tensor) -> torch.Tensor:
+        features = torch.sum(features, dim=1)
+        return_val = self.value_net(features)
+        return return_val
     
 
 
@@ -176,11 +181,10 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         )
         # Disable orthogonal initialization
         self.ortho_init = False
-        self.vf_features_extractor = GCNCriticExtractor(self.observation_space, **self.features_extractor_kwargs)
 
 
-    # def _build_mlp_extractor(self) -> None:
-    #     self.mlp_extractor = CustomNetwork(self.features_dim)
+    def _build_mlp_extractor(self) -> None:
+        self.mlp_extractor = CustomNetwork(self.features_dim)
     
     def _build(self, lr_schedule: Schedule) -> None:
         """

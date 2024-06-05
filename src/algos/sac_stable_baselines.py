@@ -9,9 +9,6 @@ from stable_baselines3.common.policies import ContinuousCritic, BaseModel
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 from src.algos.dirichlet_distribution import DirichletDistribution
-from src.misc.utils import get_rl_network, FeatureExtractor
-from src.algos.stable_baselines_gcn import GCNCriticExtractor
-from src.algos.stable_baselines_mpnn import MPNNCriticExtractor
 
     
 class CustomSACActor(Actor):
@@ -24,10 +21,8 @@ class CustomSACActor(Actor):
             *args, **kwargs
         )
         self.action_dist = DirichletDistribution(kwargs["action_space"].shape[1])
-        last_layer_dim = self.net_arch[-1] if len(self.net_arch) > 0 else self.features_dim
-        # self.last_linear_layer = nn.Linear(last_layer_dim, 1)
-        self.mu = nn.Linear(last_layer_dim, 1)
-        self.std = nn.Linear(last_layer_dim, 1)
+        # last_layer_dim = self.net_arch[-1] if len(self.net_arch) > 0 else self.features_dim
+        self.last_linear_layer = nn.Linear(self.features_dim, 1)
     
     def get_action_dist_params(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
         """
@@ -38,27 +33,17 @@ class CustomSACActor(Actor):
             Concentration
         """
         features = self.extract_features(obs, self.features_extractor)
-        latent_pi = self.latent_pi(features)
-        # action_logits = self.last_linear_layer(latent_pi).squeeze(-1)
-        # return self.last_linear_layer(latent_pi).squeeze(-1)
-        mu = self.mu(latent_pi).squeeze(-1)
-        std = self.std(latent_pi).squeeze(-1)
-        return mu, std, {}
+        action_logits = self.last_linear_layer(features).squeeze(-1)
+        return action_logits
 
     def forward(self, obs: PyTorchObs, deterministic: bool = False) -> torch.Tensor:
-        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
-        # Note: the action is squashed
-        return self.action_dist.actions_from_params(mean_actions, deterministic=deterministic)
-        # action_logits = self.get_action_dist_params(obs)
-        # return self.action_dist.actions_from_params(action_logits, deterministic=deterministic)
+        action_logits = self.get_action_dist_params(obs)
+        return self.action_dist.actions_from_params(action_logits, deterministic=deterministic)
 
     def action_log_prob(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor]:
-        # action_logits = self.get_action_dist_params(obs)
-        # # return action and associated log prob
-        # return self.action_dist.log_prob_from_params(action_logits)
-        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+        action_logits = self.get_action_dist_params(obs)
         # return action and associated log prob
-        return self.action_dist.log_prob_from_params(mean_actions)
+        return self.action_dist.log_prob_from_params(action_logits)
 
 class CustomContinuousCritic(ContinuousCritic):
     def forward(self, obs: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor, ...]:
@@ -66,7 +51,7 @@ class CustomContinuousCritic(ContinuousCritic):
             # include actions as input to feature extractor
             obs_copy = obs.copy()
             obs_copy["node_features"] = torch.cat([obs["node_features"], actions.unsqueeze(-1)], dim=2)
-            features = self.extract_features(obs_copy, self.features_extractor)
+            features = torch.sum(self.extract_features(obs_copy, self.features_extractor), dim=1)
         qvalue_input = torch.cat([features, actions], dim=1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
@@ -80,8 +65,8 @@ class CustomContinuousCritic(ContinuousCritic):
             # include actions as input to feature extractor
             obs_copy = obs.copy()
             obs_copy["node_features"] = torch.cat([obs["node_features"], actions.unsqueeze(-1)], dim=2)
-            features = self.extract_features(obs_copy, self.features_extractor)
-        return self.q_networks[0](torch.cat([features, actions], dim=1))
+            features = torch.sum(self.extract_features(obs_copy, self.features_extractor), dim=1)
+        return self.q_networks[0](torch.cat([features, actions]), dim=1)
 
 class CustomSACPolicy(SACPolicy):
     def __init__(self, *args, **kwargs):
@@ -103,18 +88,13 @@ class CustomSACPolicy(SACPolicy):
             **self.optimizer_kwargs,
         )
 
-
-        # self.critic = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
-        #                                                                      action_dim=self.action_space.shape[1]))
-        self.critic = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
-                                                                              action_dim=self.action_space.shape[1]))
+        self.critic = self.make_critic(features_extractor=self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs,
+                                                                            action_dim=self.action_space.shape[1]))
         critic_parameters = list(self.critic.parameters())
 
         # Critic target should not share the features extractor with critic
-        # self.critic_target = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
-        #                                                                             action_dim=self.action_space.shape[1]))
-        self.critic_target = self.make_critic(features_extractor=GCNCriticExtractor(self.observation_space, self.features_extractor_kwargs['hidden_features_dim'],
-                                                                                    action_dim=self.action_space.shape[1]))
+        self.critic_target = self.make_critic(features_extractor=self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs,
+                                                                              action_dim=self.action_space.shape[1]))
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         self.critic.optimizer = self.optimizer_class(
