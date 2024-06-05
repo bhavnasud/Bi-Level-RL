@@ -11,8 +11,7 @@ from src.algos.a2c_stable_baselines import CustomMultiInputActorCriticPolicy
 from src.algos.sac_stable_baselines import CustomSACPolicy
 from src.envs.stable_baselines_env_wrapper import MyDummyVecEnv
 from src.misc.utils import FeatureExtractor, RLAlgorithm
-from src.algos.stable_baselines_gcn_2 import CustomMultiInputExtractorActor
-
+from src.algos.stable_baselines_gcn import GCNActorExtractor
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import A2C, SAC, PPO
 
@@ -78,7 +77,10 @@ def run_training(feature_extractor, rl_algorithm):
         # num_nodes=env.envs[0].nregion,
         # action_dim=1,
         # extractor_type=feature_extractor
-        features_extractor_class=CustomMultiInputExtractorActor
+        features_extractor_class=GCNActorExtractor,
+        features_extractor_kwargs={
+            "hidden_features_dim": 11
+        }
     )
 
     if rl_algorithm == RLAlgorithm.A2C:
@@ -111,5 +113,5 @@ def run_training(feature_extractor, rl_algorithm):
 
 # TODO: make these args
 for algorithm in [RLAlgorithm.SAC]:
-    for extractor in [FeatureExtractor.MPNN]:
+    for extractor in [FeatureExtractor.GCN]:
         run_training(extractor, algorithm)
