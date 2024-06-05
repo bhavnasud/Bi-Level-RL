@@ -119,11 +119,13 @@
 
 
 import torch
+import torch.nn as nn
 from src.algos.dirichlet_distribution import DirichletDistribution
 from stable_baselines3.common.type_aliases import Schedule
 
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import MultiInputActorCriticPolicy
+from src.algos.stable_baselines_gcn import GCNCriticExtractor
 
 # class CustomNetwork(nn.Module):
 #     """
@@ -191,7 +193,7 @@ class CustomMultiInputActorCriticPolicy(MultiInputActorCriticPolicy):
         action_dim = self.action_space.shape[-1]
         self.action_dist = DirichletDistribution(action_dim)
         self.action_net = self.action_dist.proba_distribution_net(0)
-        # self.value_net = nn.Identity()
+        self.value_net = nn.Identity()
 
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)  # type: ignore[call-arg]
