@@ -122,7 +122,7 @@ def run_training(feature_extractor, rl_algorithm, total_timesteps=20000):
     model.learn(total_timesteps=total_timesteps, callback=eval_callback)
 
 # TODO: make these args
-for algorithm in [RLAlgorithm.SAC, RLAlgorithm.A2C]:
+for algorithm in [RLAlgorithm.SAC, RLAlgorithm.PPO]:
     for extractor in [FeatureExtractor.MPNN, FeatureExtractor.GCN, FeatureExtractor.MLP]:
         if algorithm == RLAlgorithm.A2C:
             run_training(extractor, algorithm, 2000000)
