@@ -1,12 +1,10 @@
-from gymnasium import spaces
-from typing import List, Tuple, Any, Dict, Optional, Union, Type, TypeVar
-import torch.nn.functional as F
+from typing import Tuple,  Dict, Optional
 import torch
 import torch.nn as nn
 
 from stable_baselines3.sac.policies import SACPolicy, Actor
-from stable_baselines3.common.policies import ContinuousCritic, BaseModel
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor
+from stable_baselines3.common.policies import ContinuousCritic
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 from src.algos.dirichlet_distribution import DirichletDistribution
 
@@ -46,28 +44,14 @@ class CustomSACActor(Actor):
         return self.action_dist.log_prob_from_params(action_logits)
 
 class CustomContinuousCritic(ContinuousCritic):
-    def __init__(
-        self,
-        *args,
-        **kwargs
-    ):
-        super(CustomContinuousCritic, self).__init__(
-            *args, **kwargs
-        )
-        self.q_networks: List[nn.Module] = []
-        for idx in range(kwargs["n_critics"]):
-            q_net = nn.Linear(kwargs["features_dim"], 1)
-            self.add_module(f"qf{idx}", q_net)
-            self.q_networks.append(q_net)
-
     def forward(self, obs: torch.Tensor, actions: torch.Tensor) -> Tuple[torch.Tensor, ...]:
         with torch.set_grad_enabled(True):
             # include actions as input to feature extractor
             obs_copy = obs.copy()
             obs_copy["node_features"] = torch.cat([obs["node_features"], actions.unsqueeze(-1)], dim=2)
             features = torch.sum(self.extract_features(obs_copy, self.features_extractor), dim=1)
-        # qvalue_input = torch.cat([features, actions], dim=1)
-        return tuple(q_net(features) for q_net in self.q_networks)
+        qvalue_input = torch.cat([features, actions], dim=1)
+        return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
     def q1_forward(self, obs: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
         """
@@ -80,9 +64,7 @@ class CustomContinuousCritic(ContinuousCritic):
             obs_copy = obs.copy()
             obs_copy["node_features"] = torch.cat([obs["node_features"], actions.unsqueeze(-1)], dim=2)
             features = torch.sum(self.extract_features(obs_copy, self.features_extractor), dim=1)
-        # return self.q_networks[0](torch.cat([features, actions]), dim=1)
-        return self.q_networks[0](features)
-
+        return self.q_networks[0](torch.cat([features, actions], dim=1), dim=1)
 
 class CustomSACPolicy(SACPolicy):
     def __init__(self, *args, **kwargs):
