@@ -1,9 +1,7 @@
-import torch
 from src.envs.amod_env import AMoD
 import os
 import random
 import gymnasium as gym
-from enum import Enum
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import A2C, SAC, PPO
 
@@ -43,7 +41,6 @@ class EvaluationCallback(BaseCallback):
         if self.num_timesteps % self.eval_freq == 0 or self.num_timesteps == 1:
             validation_reward = self.evaluate_model()
             self.tensorboard_writer.add_scalar("Validation reward", validation_reward, self.num_timesteps)
-            # print("Validation reward is ", validation_reward)
         if self.num_timesteps % self.save_freq == 0:
             self.save_checkpoint()
         return True
@@ -54,7 +51,6 @@ class EvaluationCallback(BaseCallback):
         print(f"Saving model checkpoint to {model_path}")
 
     def evaluate_model(self):
-        # env.env_method("set_start_to_end_test", True)
         obs = self.eval_env.reset()
         eps_served_demand = 0
         eps_rebalancing_cost = 0
@@ -91,14 +87,7 @@ def run_training(feature_extractor, rl_algorithm):
         features_extractor_class = MLPExtractor
 
     policy_kwargs = dict(
-        # hidden_features_dim=8,
-        # node_features_dim=2,
-        # edge_features_dim=1,
-        # num_nodes=env.envs[0].nregion,
-        # action_dim=1,
-        # extractor_type=feature_extractor
         features_extractor_class=features_extractor_class,
-        # features_extractor_class=MPNNActorExtractor,
         features_extractor_kwargs={
             "hidden_features_dim": 256,
             "num_nodes": env.envs[0].nregion
