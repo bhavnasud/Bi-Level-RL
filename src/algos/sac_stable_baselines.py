@@ -19,7 +19,6 @@ class CustomSACActor(Actor):
             *args, **kwargs
         )
         self.action_dist = DirichletDistribution(kwargs["action_space"].shape[1])
-        # last_layer_dim = self.net_arch[-1] if len(self.net_arch) > 0 else self.features_dim
         self.last_linear_layer = nn.Linear(self.features_dim, 1)
     
     def get_action_dist_params(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:

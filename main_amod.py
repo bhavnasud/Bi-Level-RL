@@ -119,7 +119,7 @@ def run_training(feature_extractor, rl_algorithm):
     else:
         model = SAC(CustomSACPolicy, env, policy_kwargs=policy_kwargs,
                 verbose=1, learning_rate=1e-3, ent_coef=0.3, batch_size=100,
-                gamma=0.99, learning_starts=10, device=device)
+                gamma=0.99, learning_starts=10, device=device, seed=1)
         eval_callback = EvaluationCallback(env, writer, eval_freq=100, save_freq=1000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
