@@ -68,7 +68,6 @@ class EvaluationCallback(BaseCallback):
             # we read reward from info instead of the returned value so that we can include the reward from
             # the first matching step, which happens in reset()
             eps_reward += float(info[0]["reward"])
-        # Note that this is missing first step matching reward, since that step happens in reset()
         print(f"Reward: {eps_reward:.2f} | ServedDemand: {eps_served_demand:.2f} | Reb. Cost: {eps_rebalancing_cost:.2f}")
         return eps_reward
 
@@ -111,7 +110,9 @@ def run_training(feature_extractor, rl_algorithm):
     if rl_algorithm == RLAlgorithm.A2C:
         model = A2C(CustomMultiInputActorCriticPolicy,
                     env, policy_kwargs=policy_kwargs, verbose=1,
-                    use_rms_prop=False, learning_rate=1e-4, ent_coef=0.01)
+                    use_rms_prop=False, learning_rate=1e-3, ent_coef=0.3, n_steps=100,
+                    gamma=0.99, device=device)
+
         eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
@@ -119,7 +120,8 @@ def run_training(feature_extractor, rl_algorithm):
             model = A2C.load(CHECKPOINT_PATH, env=env)
     elif rl_algorithm == RLAlgorithm.PPO:
         model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
-                    verbose=1, learning_rate=1e-4, ent_coef=0.01)
+                    verbose=1, learning_rate=1e-3, ent_coef=0.3, n_steps=100,
+                   gamma=0.99, device=device)
         eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
