@@ -57,7 +57,7 @@ class EvaluationCallback(BaseCallback):
             obs, reward, done, info = self.eval_env.step(action)
             episode_reward += reward
         self.eval_env.env_method("set_start_to_end_test", False)
-        # self.eval_env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
+        self.eval_env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
         return episode_reward
 
 def run_training(feature_extractor, rl_algorithm, total_timesteps=20000):
@@ -79,16 +79,9 @@ def run_training(feature_extractor, rl_algorithm, total_timesteps=20000):
         features_extractor_class = MLPExtractor
 
     policy_kwargs = dict(
-        # hidden_features_dim=8,
-        # node_features_dim=2,
-        # edge_features_dim=1,
-        # num_nodes=env.envs[0].nregion,
-        # action_dim=1,
-        # extractor_type=feature_extractor
         features_extractor_class=features_extractor_class,
-        # features_extractor_class=MPNNActorExtractor,
         features_extractor_kwargs={
-            "hidden_features_dim": 11,
+            "hidden_features_dim": 11, # TODO: make this a cmdline argument
             "num_nodes": env.envs[0].nregion
         }
     )

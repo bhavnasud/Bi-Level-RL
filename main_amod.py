@@ -87,7 +87,7 @@ def run_training(feature_extractor, rl_algorithm):
     policy_kwargs = dict(
         features_extractor_class=features_extractor_class,
         features_extractor_kwargs={
-            "hidden_features_dim": 256,
+            "hidden_features_dim": 256, # TODO: make this a cmdline argument
             "num_nodes": env.envs[0].nregion
         }
     )
