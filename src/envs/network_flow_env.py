@@ -8,12 +8,8 @@ import torch
 import numpy as np
 import networkx as nx
 import random
-from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import gymnasium as gym
-from gymnasium import spaces
-from torch_geometric.utils import to_dense_adj
-import torch.nn.functional as F
 from matplotlib.lines import Line2D
 
 # Function to generate a random connected graph that is not complete
