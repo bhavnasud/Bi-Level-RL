@@ -9,7 +9,7 @@ To train a model for the network flow problem, you can run `main_network_flow.py
 *Validation reward for the network flow problem. The first graph represents SAC, run with three different neural networks. The second graph represents A2C, run with the same three neural networks. A2C with a graph convolution network (yellow) acheives the highest validation reward. This is likely because the graph convolution network is the only one that takes in edge features (travel times). SAC likely doesn't work as well as A2C for this problem because it doesn't work well with sparse reward.*
 
 To train a policy for the autonomous mobility on demand problem, simply run
-python3 `main_amod.py`. By default, this uses a graph convolution network with SAC, but you can change the RL algorithm or network by modifying the variables in main_amod.py. Checkpoints are automatically saved in the amod_checkpoints folder, and validation reward (from deterministic actions) is saved in the amod_runs folder.
+python3 `main_amod.py`. You will need to make sure you have SUMO version 1.19 installed. By default, this uses a graph convolution network with A2C, but you can change the RL algorithm or network by modifying the variables in main_amod.py. Checkpoints are automatically saved in the amod_checkpoints folder, and validation reward (from deterministic actions) is saved in the amod_runs folder.
 
-
-# TODO: add image for AMOD
+<img align="center" src="a2c_amod_sumo.png" width="1100"/></td> <br/>
+*Validation reward for the amod problem with SUMO. This was trained using A2C with a GCN.*
