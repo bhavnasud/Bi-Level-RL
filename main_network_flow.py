@@ -22,6 +22,8 @@ from stable_baselines3 import A2C, SAC, PPO
 CHECKPOINT_PATH = ""
 
 
+device = "cpu"
+
 random.seed(104)
 
 class EvaluationCallback(BaseCallback):
@@ -59,7 +61,8 @@ class EvaluationCallback(BaseCallback):
             obs, reward, done, info = self.eval_env.step(action)
             episode_reward += reward
         self.eval_env.env_method("set_start_to_end_test", False)
-        self.eval_env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
+        # uncomment this to visualize the path taken during training
+        # self.eval_env.env_method("visualize_prediction", info[0]["true_shortest_path"], info[0]["path_followed"], info[0]["episode_reward"])
         return episode_reward
 
 def run_training(feature_extractor, rl_algorithm, total_timesteps=20000):
@@ -91,28 +94,28 @@ def run_training(feature_extractor, rl_algorithm, total_timesteps=20000):
     if rl_algorithm == RLAlgorithm.A2C:
         model = A2C(CustomMultiInputActorCriticPolicy,
                     env, policy_kwargs=policy_kwargs, verbose=1,
-                    use_rms_prop=False, learning_rate=1e-4, ent_coef=0.01)
+                    use_rms_prop=False, learning_rate=1e-4, ent_coef=0.01, device=device)
         eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
             print("Loading saved model from path ", CHECKPOINT_PATH)
-            model = A2C.load(CHECKPOINT_PATH, env=env)
+            model = A2C.load(CHECKPOINT_PATH, env=env, device=device)
     elif rl_algorithm == RLAlgorithm.PPO:
         model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
-                    verbose=1, learning_rate=1e-4, ent_coef=0.01)
+                    verbose=1, learning_rate=1e-4, ent_coef=0.01, device=device)
         eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
             print("Loading saved model from path ", CHECKPOINT_PATH)
-            model = PPO.load(CHECKPOINT_PATH, env=env)
+            model = PPO.load(CHECKPOINT_PATH, env=env, device=device)
     else:
         model = SAC(CustomSACPolicy, env, policy_kwargs=policy_kwargs,
-                    verbose=1, learning_rate=1e-4, ent_coef=0.01)
+                    verbose=1, learning_rate=1e-4, ent_coef=0.01, device=device)
         eval_callback = EvaluationCallback(env, writer, eval_freq=100, save_freq=1000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
             print("Loading saved model from path ", CHECKPOINT_PATH)
-            model = SAC.load(CHECKPOINT_PATH, env=env)
+            model = SAC.load(CHECKPOINT_PATH, env=env, device=device)
 
     model.learn(total_timesteps=total_timesteps, callback=eval_callback)
 

@@ -105,7 +105,7 @@ def run_training(feature_extractor, rl_algorithm):
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
             print("Loading saved model from path ", CHECKPOINT_PATH)
-            model = A2C.load(CHECKPOINT_PATH, env=env)
+            model = A2C.load(CHECKPOINT_PATH, env=env, device=device)
     elif rl_algorithm == RLAlgorithm.PPO:
         model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
                     verbose=1, learning_rate=1e-3, ent_coef=0.3, n_steps=100,
@@ -114,7 +114,7 @@ def run_training(feature_extractor, rl_algorithm):
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
             print("Loading saved model from path ", CHECKPOINT_PATH)
-            model = PPO.load(CHECKPOINT_PATH, env=env)
+            model = PPO.load(CHECKPOINT_PATH, env=env, device=device)
     else:
         model = SAC(CustomSACPolicy, env, policy_kwargs=policy_kwargs,
                 verbose=1, learning_rate=1e-3, ent_coef=0.3, batch_size=100,
@@ -123,7 +123,7 @@ def run_training(feature_extractor, rl_algorithm):
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
             print("Loading saved model from path ", CHECKPOINT_PATH)
-            model = SAC.load(CHECKPOINT_PATH, env=env)
+            model = SAC.load(CHECKPOINT_PATH, env=env, device=device)
 
     model.learn(total_timesteps=20000000, callback=eval_callback)
 
