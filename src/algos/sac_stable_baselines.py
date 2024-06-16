@@ -18,6 +18,7 @@ class CustomSACActor(Actor):
         super(CustomSACActor, self).__init__(
             *args, **kwargs
         )
+        # override custom Gaussian distribution
         self.action_dist = DirichletDistribution(kwargs["action_space"].shape[1])
         self.last_linear_layer = nn.Linear(self.features_dim, 1)
     

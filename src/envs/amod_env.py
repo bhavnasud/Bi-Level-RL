@@ -39,6 +39,7 @@ beta_dict = {
 
 # TODO: make this configurable
 CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
+# CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
 
 class GNNParser:
     """
@@ -132,7 +133,6 @@ class GNNParser:
         edge_index = self.get_edge_index()
         return {
             "node_features": x.numpy(),
-            # "edge_features": self.edge_data.numpy(),
             "edge_index": edge_index.numpy()
         }
     
@@ -237,7 +237,6 @@ class AMoD(gym.Env):
         self.action_space = gym.spaces.Box(low=0, high=1, shape=(self.nregion, 1), dtype=np.float32)
         self.observation_space_dict = {
             "node_features": gym.spaces.Box(low=0, high=float('inf'), shape=(self.nregion, 13), dtype=np.float32),
-            # "edge_features": gym.spaces.Box(low=0, high=1, shape=(len(self.edges), 1), dtype=np.float32),
             "edge_index": gym.spaces.Box(low=0, high=self.nregion, shape=edge_index.shape, dtype=int)
         }
         self.observation_space = gym.spaces.Dict(self.observation_space_dict)

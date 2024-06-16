@@ -127,4 +127,5 @@ def run_training(feature_extractor, rl_algorithm):
 
     model.learn(total_timesteps=20000000, callback=eval_callback)
 
+# note that a MPNN won't work here because the amod observation space does not have an edge attr
 run_training(FeatureExtractor.GCN, RLAlgorithm.SAC)

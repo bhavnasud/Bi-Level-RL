@@ -1,8 +1,5 @@
 import numpy as np
 from enum import Enum
-# from src.algos.stable_baselines_mlp import ActorMlp, CriticMlp
-# from src.algos.stable_baselines_mpnn import ActorMpnn, CriticMpnn
-# from src.algos.stable_baselines_gcn import ActorGCN, CriticGCN
 
 def mat2str(mat):
     return str(mat).replace("'",'"').replace('(','<').replace(')','>').replace('[','{').replace(']','}')  
@@ -28,30 +25,3 @@ class RLAlgorithm(Enum):
     A2C = 0
     PPO = 1
     SAC = 2
-
-   
-# def get_rl_network(extractor_type, hidden_features_dim, node_features_dim, edge_features_dim,
-#                           num_nodes, action_dim, value_net=False, value_net_include_actions=False):
-#     if extractor_type == FeatureExtractor.MLP:
-#         if value_net:
-#             return CriticMlp(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-#                             edge_features_dim=edge_features_dim, action_dim=action_dim if value_net_include_actions else 0,
-#                             num_nodes=num_nodes)
-#         else:
-#             return ActorMlp(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-#                             edge_features_dim=edge_features_dim, action_dim=action_dim,
-#                             num_nodes=num_nodes)
-#     elif extractor_type == FeatureExtractor.MPNN:
-#         if value_net:
-#             return CriticMpnn(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-#                             edge_features_dim=edge_features_dim, action_dim=action_dim if value_net_include_actions else 0)
-#         else:
-#             return ActorMpnn(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-#                             edge_features_dim=edge_features_dim, action_dim=action_dim)
-#     else:
-#         if value_net:
-#             return CriticGCN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-#                             action_dim=action_dim if value_net_include_actions else 0)
-#         else:
-#             return ActorGCN(hidden_features_dim=hidden_features_dim, node_features_dim=node_features_dim,
-#                             action_dim=action_dim)
