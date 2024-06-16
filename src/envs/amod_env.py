@@ -39,7 +39,6 @@ beta_dict = {
 
 # TODO: make this configurable
 CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
-#CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
 
 class GNNParser:
     """
@@ -151,7 +150,7 @@ class AMoD(gym.Env):
             demand_ratio=demand_ratio[city],
             json_hr=json_hr[city],
             sd=100,
-            json_tstep=3,
+            json_tstep=3, # TODO: change tstep of nyc to 4 during testing
             tf=20,
         )
         self.city = city
@@ -444,9 +443,6 @@ class AMoD(gym.Env):
         info_copied = info.copy()
         parsed_obs = self.parser.parse_obs(obs)
         self.time += 1
-        # TODO: try nyc brooklyn, train for 3000 epochs, or 3000 * 20 timesteps
-        # TODO: change tstep of nyc to 4 during testing
-        # TODO: create separate testing mode, both for amod and for network flow
         # Do matching step
         paxreward = 0
         if not done:

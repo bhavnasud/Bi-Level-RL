@@ -23,8 +23,6 @@ random.seed(104)
 
 writer = SummaryWriter()
 
-# TODO: figure out GPU issue
-#device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
 device = "cpu"
 
 class EvaluationCallback(BaseCallback):

@@ -230,7 +230,6 @@ class NetworkFlowEnv(gym.Env):
             6: (2, 2),
             7: (3, 1)
         }
-        # TODO: label edges with travel times
         plt.clf()
         nx.draw(self.G, custom_pos, with_labels=True, node_color='lightblue', node_size=1500, font_size=10, font_weight='bold')
 
