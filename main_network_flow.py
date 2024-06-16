@@ -17,6 +17,8 @@ from src.algos.stable_baselines_mlp import MLPExtractor
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import A2C, SAC, PPO
 
+# set this to the path to the saved checkpoint (e.g. network_flow_checkpoints/SAC/MPNN/100000_steps.zip) to resume
+# from that checkpoint
 CHECKPOINT_PATH = ""
 
 

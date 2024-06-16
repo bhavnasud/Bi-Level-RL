@@ -16,8 +16,9 @@ from src.algos.stable_baselines_mpnn import MPNNExtractor
 from src.algos.stable_baselines_mlp import MLPExtractor
 
 
+# set this to the path to the saved checkpoint (e.g. amod_checkpoints/SAC/GCN/100000_steps.zip) to resume
+# from that checkpoint
 CHECKPOINT_PATH = ""
-
 
 random.seed(104)
 
