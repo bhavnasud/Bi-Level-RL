@@ -21,11 +21,7 @@ if 'SUMO_HOME' in os.environ:
 import sumolib
 import traci
 import math
-import multiprocessing
-import pdb
-import time
 import platform
-# import line_profiler
 
 from lxml import etree as ET
 from collections import defaultdict
@@ -33,7 +29,6 @@ from itertools import combinations
 from sklearn.cluster import KMeans
 from src.misc.utils import mat2str
 from scipy.spatial.distance import cdist
-from copy import deepcopy
 
 demand_ratio = {
     "san_francisco": 2,
@@ -141,7 +136,7 @@ class GNNParser:
 
 class AMoD(gym.Env):
     # initialization
-    def __init__(self, args, beta=0.2, city="lux", reward_scale_factor=1):  # updated to take scenario and beta (cost for rebalancing) as input
+    def __init__(self, args=None, beta=0.2, city="lux", reward_scale_factor=1):  # updated to take scenario and beta (cost for rebalancing) as input
         print("Running for city ", city)
         if city == 'lux':
             self.demand_file = f"data/scenario_{city}{args.num_regions}.json"
@@ -211,7 +206,7 @@ class AMoD(gym.Env):
         edge_index = self.parser.get_edge_index()
         self.action_space = gym.spaces.Box(low=0, high=1, shape=(self.nregions, 1), dtype=np.float32)
         self.observation_space_dict = {
-            "node_features": gym.spaces.Box(low=0, high=float('inf'), shape=(self.nregions, 21), dtype=np.float32),
+            "node_features": gym.spaces.Box(low=0, high=float('inf'), shape=(self.nregions, 2 * self.scenario.thorizon + 1), dtype=np.float32),
             "edge_index": gym.spaces.Box(low=0, high=self.nregions, shape=edge_index.shape, dtype=int)
         }
         self.observation_space = gym.spaces.Dict(self.observation_space_dict)
@@ -320,7 +315,6 @@ class AMoD(gym.Env):
         self.info["reward"] += max(0, self.reward)
         return self.obs, max(0, self.reward), done, self.info
 
-
     def dispatch_taxi(self, taxi_num, o, reservation):
         """
         Method to dispatch the taxi, given the matching action
@@ -345,8 +339,9 @@ class AMoD(gym.Env):
             taxi_id = taxi[0]
             edge = traci.vehicle.getRoadID(taxi_id)
         traci.vehicle.dispatchTaxi(taxi_id, [reservation_id])
+        route_pickup = traci.simulation.findRoute(edge, edge_o, vType='taxi')
         route = traci.simulation.findRoute(edge_o, edge_d, vType='taxi')
-        demand_time = int(math.ceil(route.travelTime / (traci.vehicle.getSpeedFactor(taxi_id) * 60)))
+        demand_time = int(math.ceil((route.travelTime + route_pickup.travelTime) / (traci.vehicle.getSpeedFactor(taxi_id) * 60)))
         arrival_time = t + demand_time  # Use the speed factor to have a more accurate forecast of the travel time
         if arrival_time % tstep != 0:
             arrival_time = (arrival_time // tstep + 1) * tstep
@@ -468,7 +463,7 @@ class AMoD(gym.Env):
             traci.close()
         return parsed_obs, (paxreward + rebreward) * self.reward_scale_factor, done, False, info_copied
 
-    def reset(self, seed=None):
+    def reset(self, seed=None, option=None):
         # reset the episode
         super().reset(seed=seed)
         if self.traci_connected:
