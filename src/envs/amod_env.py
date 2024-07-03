@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import subprocess
 import os
-from collections import defaultdict
+import sys
 import networkx as nx
 from src.misc.utils import mat2str
 import json
@@ -21,23 +21,26 @@ if 'SUMO_HOME' in os.environ:
 import sumolib
 import traci
 import math
+import multiprocessing
+import pdb
+import time
+import platform
+# import line_profiler
+
 from lxml import etree as ET
 from collections import defaultdict
 from itertools import combinations
 from sklearn.cluster import KMeans
+from src.misc.utils import mat2str
+from scipy.spatial.distance import cdist
+from copy import deepcopy
 
 demand_ratio = {
     "san_francisco": 2,
     "washington_dc": 4.2,
     "nyc_brooklyn": 9,
     "shenzhen_downtown_west": 2.5,
-    "lux": 0.1
-}
-json_hr = {
-    "san_francisco": 19,
-    "washington_dc": 19,
-    "nyc_brooklyn": 19,
-    "shenzhen_downtown_west": 8,
+    "lux": 1
 }
 beta_dict = {
     "san_francisco": 0.2,
@@ -55,9 +58,13 @@ sumo_cmd = [
     "-b", "0", "--seed", "10",
     "-W", 'true', "-v", 'false',
 ]
-# TODO: make this configurable
-CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
-# CPLEXPATH = "/Applications/CPLEX_Studio2211/opl/bin/arm64_osx/"
+if platform.system() == 'Windows':
+    CPLEXPATH = "C:/Program Files/IBM/ILOG/CPLEX_Studio2211/opl/bin/x64_win64/"
+elif platform.system() == 'Mac':
+    CPLEXPATH = "/Applications/CPLEX_Studio1210/opl/bin/x86-64_osx/"
+elif platform.system() == 'Linux':
+    CPLEXPATH = "/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/"
+
 
 class GNNParser:
     """
@@ -73,74 +80,56 @@ class GNNParser:
         self.grid_w = grid_w
    
     def get_edge_index(self):
-        return torch.cat([torch.tensor([self.env.region]), torch.tensor([self.env.region])])
- 
-    def parse_obs(self, obs):
-        x = torch.cat((
-            torch.tensor([obs[0][n][self.env.time+1]*self.s for n in self.env.region]).view(1, 1, self.env.nregions).float(),
-            torch.tensor([[(obs[0][n][self.env.time+1] + self.env.dacc[n][t])*self.s for n in self.env.region] \
-                          for t in range(self.env.time+1, self.env.time+self.T+1)]).view(1, self.T, self.env.nregions).float(),
-            torch.tensor([[sum([(self.env.demand[i,j][t])*(self.env.price[i,j][t])*self.s \
-                          for j in self.env.region]) for i in self.env.region] for t in range(self.env.time+1, self.env.time+self.T+1)]).view(1, self.T, self.env.nregions).float()),
-              dim=1).squeeze(0).view(21, self.env.nregions).T
-
         # Edge index self-connected tensor definition (da modificare)
-        edge_index = self.get_edge_index()
-        return {
-            "node_features": x.numpy(),
-            "edge_index": edge_index.numpy()
-        }
+        origin = []
+        destination = []
+        for o in range(self.env.scenario.adjacency_matrix.shape[0]):
+            for d in range(self.env.scenario.adjacency_matrix.shape[1]):
+                if self.env.scenario.adjacency_matrix[o, d] == 1:
+                    origin.append(o)
+                    destination.append(d)
+        # return torch.cat([torch.tensor([origin]), torch.tensor([destination])])
+        return torch.cat([torch.tensor([self.env.region]), torch.tensor([self.env.region])])
 
     def parse_obs(self, obs):
         x = (
             torch.cat(
                 (
                     torch.tensor(
-                        [obs[0][n][self.env.time + 1] *
-                            self.s for n in self.env.region]
+                        [obs[0][n][self.env.time + 1] * self.s for n in self.env.region]
                     )
-                    .view(1, 1, self.env.nregion)
+                    .view(1, 1, self.env.nregions)
                     .float(),
                     torch.tensor(
                         [
                             [
-                                (obs[0][n][self.env.time + 1] +
-                                 self.env.dacc[n][t])
-                                * self.s
-                                for n in self.env.region
+                                (obs[0][n][self.env.time + 1] + self.env.dacc[n][t]) * self.s for n in self.env.region
                             ]
-                            for t in range(
-                                self.env.time + 1, self.env.time + self.T + 1
-                            )
+                            for t in range(self.env.time + 1, self.env.time + self.T + 1)
                         ]
                     )
-                    .view(1, self.T, self.env.nregion)
+                    .view(1, self.T, self.env.nregions)
                     .float(),
                     torch.tensor(
                         [
                             [
                                 sum(
                                     [
-                                        (self.env.scenario.demand_input[i, j][t])
-                                        * (self.env.price[i, j][t])
-                                        * self.s
-                                        for j in self.env.region
+                                        (self.env.scenario.demand_input[i, j][t]) * (self.env.price[i, j][t]) * self.s for j in self.env.region
                                     ]
                                 )
                                 for i in self.env.region
                             ]
-                            for t in range(
-                                self.env.time + 1, self.env.time + self.T + 1
-                            )
+                            for t in range(self.env.time + 1, self.env.time + self.T + 1)
                         ]
                     )
-                    .view(1, self.T, self.env.nregion)
+                    .view(1, self.T, self.env.nregions)
                     .float(),
                 ),
                 dim=1,
             )
             .squeeze(0)
-            .view(1 + self.T + self.T, self.env.nregion)
+            .view(1 + self.T + self.T, self.env.nregions)
             .T
         )
         edge_index = self.get_edge_index()
@@ -148,21 +137,25 @@ class GNNParser:
             "node_features": x.numpy(),
             "edge_index": edge_index.numpy()
         }
-    
 
 
 class AMoD(gym.Env):
     # initialization
-    def __init__(
-        self, beta=0.2, city="lux", reward_scale_factor=1
-    ):  # updated to take scenario and beta (cost for rebalancing) as input
+    def __init__(self, args, beta=0.2, city="lux", reward_scale_factor=1):  # updated to take scenario and beta (cost for rebalancing) as input
         print("Running for city ", city)
-        self.json_file = f"data/scenario_{city}.json"
-        
-        
-        scenario = Scenario(num_cluster=8, json_file="data/scenario_nyc4x4.json", sumo_net_file=net_file, acc_init=20, sd=100, demand_ratio=demand_ratio[city], time_start=0, time_horizon=10, duration=2, tstep=matching_tstep)
+        if city == 'lux':
+            self.demand_file = f"data/scenario_{city}{args.num_regions}.json"
+        else:
+            self.demand_file = f"data/scenario_{city}.json"
+
+        scenario = Scenario(
+            num_cluster=args.num_regions, json_file=self.demand_file, sumo_net_file=net_file,
+            acc_init=args.acc_init, sd=args.seed, demand_ratio=args.demand_ratio,
+            time_start=args.time_start, time_horizon=args.time_horizon, duration=args.duration,
+            tstep=args.matching_tstep, max_waiting_time=args.max_waiting_time
+        )
         self.city = city
-        self.reward_scale_factor=reward_scale_factor
+        self.reward_scale_factor = reward_scale_factor
         self.scenario = scenario
         self.G = scenario.G  # Road Graph: node - region, edge - connection of regions, node attr: 'accInit', edge attr: 'time'
         self.regions_sumo = scenario.regions_sumo
@@ -174,6 +167,7 @@ class AMoD(gym.Env):
         self.time = 0  # current time
         self.tstep = self.scenario.tstep
         self.duration = scenario.duration  # final time
+        self.max_waiting_time = self.scenario.max_waiting_time  # Maximum waiting time of passengers
         self.demand = defaultdict(dict)  # demand
         self.region = list(self.G)  # set of regions
         self.price = defaultdict(dict)  # price
@@ -184,7 +178,7 @@ class AMoD(gym.Env):
         self.paxFlow = defaultdict(dict)  # number of vehicles with passengers, key: (i,j) - (origin, destination), t - time
         self.traci_connected = False
         self.edges = []  # set of rebalancing edges
-        self.nregion = len(scenario.G)  # number of regions
+        self.nregions = len(scenario.G)  # number of regions
         for i in self.G:
             self.edges.append((i, i))
             for e in self.G.out_edges(i):
@@ -215,10 +209,10 @@ class AMoD(gym.Env):
         self.obs = (self.acc, self.time, self.dacc, self.demand) 
         self.parser = GNNParser(self)
         edge_index = self.parser.get_edge_index()
-        self.action_space = gym.spaces.Box(low=0, high=1, shape=(self.nregion, 1), dtype=np.float32)
+        self.action_space = gym.spaces.Box(low=0, high=1, shape=(self.nregions, 1), dtype=np.float32)
         self.observation_space_dict = {
-            "node_features": gym.spaces.Box(low=0, high=float('inf'), shape=(self.nregion, 21), dtype=np.float32),
-            "edge_index": gym.spaces.Box(low=0, high=self.nregion, shape=edge_index.shape, dtype=int)
+            "node_features": gym.spaces.Box(low=0, high=float('inf'), shape=(self.nregions, 21), dtype=np.float32),
+            "edge_index": gym.spaces.Box(low=0, high=self.nregions, shape=edge_index.shape, dtype=int)
         }
         self.observation_space = gym.spaces.Dict(self.observation_space_dict)
         
@@ -310,31 +304,11 @@ class AMoD(gym.Env):
                 reservation = self.demand_res[i, j][t][taxi_match]
                 reservation_id = reservation.id
                 persons = reservation.persons[0]
-                edge_o = reservation.fromEdge
-                edge_d = reservation.toEdge
-                taxi = self.regions_sumo[i]['taxis'][taxi_num]
+                taxi, arrival_time, demand_time = self.dispatch_taxi(taxi_num, o=i, reservation=reservation)
                 taxi_id = taxi[0]
-                # Direction check
-                edge = traci.vehicle.getRoadID(taxi_id)
-                while edge[1].isdigit != edge_o[1].isdigit:
-                    if taxi_num == len(self.regions_sumo[i]['taxis']) - 1:
-                        taxi = self.regions_sumo[i]['taxis'][0]
-                        taxi_id = taxi[0]
-                        break
-                    taxi_num += 1
-                    taxi = self.regions_sumo[i]['taxis'][taxi_num]
-                    taxi_id = taxi[0]
-                    edge = traci.vehicle.getRoadID(taxi_id)
-                # Dispatch and taxi remove from the region
-                traci.vehicle.dispatchTaxi(taxi_id, [reservation_id])
-                route = traci.simulation.findRoute(edge_o, edge_d, vType='taxi')
                 self.regions_sumo[i]['taxis'].remove(taxi)
                 self.reservations_assigned.append([reservation_id, persons, taxi_id])
                 # Find taxi travel time and travel info computation
-                demand_time = int(math.ceil(route.travelTime / (traci.vehicle.getSpeedFactor(taxi_id) * 60)))
-                arrival_time = t + demand_time      # Use the speed factor to have a more accurate forecast of the travel time
-                if arrival_time % tstep != 0:
-                    arrival_time = (arrival_time // tstep + 1) * tstep
                 self.paxFlow[i, j][arrival_time] += 1
                 self.dacc[j][arrival_time] += 1
                 self.info["operating_cost"] += demand_time * self.beta
@@ -345,6 +319,38 @@ class AMoD(gym.Env):
         done = False  # if passenger matching is executed first
         self.info["reward"] += max(0, self.reward)
         return self.obs, max(0, self.reward), done, self.info
+
+
+    def dispatch_taxi(self, taxi_num, o, reservation):
+        """
+        Method to dispatch the taxi, given the matching action
+        """
+        tstep = self.tstep
+        t = self.time
+        reservation_id = reservation.id
+        persons = reservation.persons[0]
+        edge_o = reservation.fromEdge
+        edge_d = reservation.toEdge
+        taxi = self.regions_sumo[o]['taxis'][taxi_num]
+        taxi_id = taxi[0]
+        # Direction check
+        edge = traci.vehicle.getRoadID(taxi_id)
+        while edge[1].isdigit != edge_o[1].isdigit:
+            if taxi_num == len(self.regions_sumo[o]['taxis']) - 1:
+                taxi = self.regions_sumo[o]['taxis'][0]
+                taxi_id = taxi[0]
+                break
+            taxi_num += 1
+            taxi = self.regions_sumo[o]['taxis'][taxi_num]
+            taxi_id = taxi[0]
+            edge = traci.vehicle.getRoadID(taxi_id)
+        traci.vehicle.dispatchTaxi(taxi_id, [reservation_id])
+        route = traci.simulation.findRoute(edge_o, edge_d, vType='taxi')
+        demand_time = int(math.ceil(route.travelTime / (traci.vehicle.getSpeedFactor(taxi_id) * 60)))
+        arrival_time = t + demand_time  # Use the speed factor to have a more accurate forecast of the travel time
+        if arrival_time % tstep != 0:
+            arrival_time = (arrival_time // tstep + 1) * tstep
+        return taxi, arrival_time, demand_time
 
     def reb_step(self, rebAction):
         tstep = self.tstep
@@ -367,28 +373,7 @@ class AMoD(gym.Env):
             # SUMO travels assignment
             taxis_reb = 0
             while taxis_reb < self.rebAction[k]:
-                taxi = self.regions_sumo[i]['taxis'][0]
-                taxi_id = taxi[0]
-                edge_d = self.regions_sumo[j]['in_edges'][np.random.randint(len(self.regions_sumo[j]['in_edges']))].getID()
-                edge_d_length = traci.lane.getLength(edge_d + '_0')
-                edge_o = traci.vehicle.getRoadID(taxi_id)
-                route = traci.simulation.findRoute(edge_o, edge_d, vType='taxi', routingMode=1)
-                reb_time = int(math.ceil(route.travelTime / (traci.vehicle.getSpeedFactor(taxi_id) * 60)))
-                arrival_time = t + reb_time      # Use the speed factor to have a more accurate forecast of the travel time
-                if arrival_time % tstep != 0:
-                    arrival_time = (arrival_time // tstep + 1) * tstep
-                if self.scenario.is_meso:
-                    edge_o_length = traci.lane.getLength(edge_o + '_0')
-                    reb_id = taxi_id + 'o' + str(i) + 'd' + str(j) + '#' + str(taxis_reb) + '_rebalancing'
-                    traci.person.add(personID=reb_id, edgeID=edge_o, pos=edge_o_length)
-                    traci.person.appendDrivingStage(personID=reb_id, toEdge=edge_d, lines='taxi')
-                    reb_assign.append((taxi_id, reb_id))
-                else:
-                    traci.vehicle.resume(taxi_id)
-                    traci.vehicle.setRoute(taxi_id, route.edges)
-                    traci.vehicle.setStop(taxi_id, edge_d, pos=edge_d_length, flags=1)  # Set the stop in the new location
-                    traci.vehicle.setStopParameter(taxi_id, 0, 'actType', 'rebalancing')  # Set the taxi condition to rebalancing
-
+                taxi, arrival_time, reb_time = self.reb_taxi(reb_assign, taxis_reb, o=i, d=j)
                 self.regions_sumo[i]['taxis'].remove(taxi)
                 self.rebFlow[i, j][arrival_time] += 1
                 self.dacc[i][arrival_time] += 1
@@ -415,6 +400,35 @@ class AMoD(gym.Env):
         done = (self.duration == t + tstep)  # if the episode is completed
         self.info["reward"] += self.reward
         return self.obs, self.reward, done, self.info
+
+    def reb_taxi(self, reb_assign, taxis_reb, o, d):
+        """
+        Method to rebalance taxis
+        """
+        tstep = self.tstep
+        t = self.time
+        taxi = self.regions_sumo[o]['taxis'][0]
+        taxi_id = taxi[0]
+        edge_d = self.regions_sumo[d]['in_edges'][np.random.randint(len(self.regions_sumo[d]['in_edges']))].getID()
+        edge_d_length = traci.lane.getLength(edge_d + '_0')
+        edge_o = traci.vehicle.getRoadID(taxi_id)
+        route = traci.simulation.findRoute(edge_o, edge_d, vType='taxi', routingMode=1)
+        reb_time = int(math.ceil(route.travelTime / (traci.vehicle.getSpeedFactor(taxi_id) * 60)))
+        arrival_time = t + reb_time  # Use the speed factor to have a more accurate forecast of the travel time
+        if arrival_time % tstep != 0:
+            arrival_time = (arrival_time // tstep + 1) * tstep
+        if self.scenario.is_meso:
+            edge_o_length = traci.lane.getLength(edge_o + '_0')
+            reb_id = taxi_id + 'o' + str(o) + 'd' + str(d) + '#' + str(taxis_reb) + '_rebalancing'
+            traci.person.add(personID=reb_id, edgeID=edge_o, pos=edge_o_length)
+            traci.person.appendDrivingStage(personID=reb_id, toEdge=edge_d, lines='taxi')
+            reb_assign.append((taxi_id, reb_id))
+        else:
+            traci.vehicle.resume(taxi_id)
+            traci.vehicle.setRoute(taxi_id, route.edges)
+            traci.vehicle.setStop(taxi_id, edge_d, pos=edge_d_length, flags=1)  # Set the stop in the new location
+            traci.vehicle.setStopParameter(taxi_id, 0, 'actType', 'rebalancing')  # Set the taxi condition to rebalancing
+        return taxi, arrival_time, reb_time
 
     def step(self, action_rl):
         """
@@ -470,6 +484,7 @@ class AMoD(gym.Env):
             self.edges.append((i, i))
             for e in self.G.out_edges(i):
                 self.edges.append(e)
+
         self.edges = list(set(self.edges))
         self.demand = defaultdict(dict)  # demand
         self.price = defaultdict(dict)  # price
@@ -536,6 +551,10 @@ class AMoD(gym.Env):
         for trip in reservations:
             trip_id = trip.id
             persons = trip.persons[0]
+            waiting_time = traci.person.getWaitingTime(persons)
+            if waiting_time > self.max_waiting_time * 60:
+                traci.person.remove(persons)
+                persons = ''
             if not persons:
                 continue
             o = int(persons[(persons.find('o') + 1):persons.find('d')])
@@ -582,6 +601,7 @@ class AMoD(gym.Env):
         """
         Method to assign the avaiable taxi to the relative region
         """
+        taxi_info = []
         for taxi_id in taxi_ids:
             stop = traci.vehicle.getStops(taxi_id)
             stop_info = stop[0].actType
@@ -591,9 +611,17 @@ class AMoD(gym.Env):
                 if not parking:
                     continue
             position = traci.vehicle.getPosition(taxi_id)
-            region = self.scenario.cluster_alg.predict(np.array(position).reshape(1, -1))
-            if not (taxi_id, stop_info) in self.regions_sumo[region[0]]['taxis']:
-                self.regions_sumo[region[0]]['taxis'].append((taxi_id, stop_info))
+            taxi_info.append((taxi_id, stop_info, position))
+
+        # Batch process the position
+        positions = np.array([info[2] for info in taxi_info])
+        regions = np.array([])
+        if positions.size > 0:
+            regions = self.scenario.cluster_alg.predict(positions)
+        # Assign taxis to regions
+        for (taxi_id, stop_info, _), region in zip(taxi_info, regions):
+            if (taxi_id, stop_info) not in self.regions_sumo[region]['taxis']:
+                self.regions_sumo[region]['taxis'].append((taxi_id, stop_info))
 
     def check_parking(self, taxi_id, stop):
         """
@@ -610,9 +638,10 @@ class AMoD(gym.Env):
         else:
             return traci.vehicle.isStoppedParking(taxi_id)
 
+
 class Scenario:
     def __init__(self, num_cluster=4, duration=2, sd=None, demand_ratio=None, json_file=None, time_start=7,
-            time_horizon=10, tstep=2, varying_time=False, json_regions=None, sumo_net_file=None, acc_init=100):
+            time_horizon=10, tstep=2, max_waiting_time=5, varying_time=False, json_regions=None, sumo_net_file=None, acc_init=100):
         """
         Method to initialize the scenario for the AMoD problem with the following features
             demand_input will be converted to a variable static_demand to represent the demand between each pair of nodes
@@ -630,6 +659,7 @@ class Scenario:
 
         self.is_meso = 'meso' in sumo_net_file
         self.sumo_net = sumolib.net.readNet(sumo_net_file)
+        self.adjacency_matrix = np.array
         self.regions_sumo, self.cluster_alg = self.sumo_net_clustering()
         self.taxi_routes = self.get_taxi_routes()
         self.G = nx.complete_graph(self.N)
@@ -647,6 +677,7 @@ class Scenario:
 
         self.tstep = tstep
         self.thorizon = time_horizon
+        self.max_waiting_time = max_waiting_time
         self.demand_input = defaultdict(dict)
         self.json_regions = json_regions
         self.price = defaultdict(dict)
@@ -655,6 +686,7 @@ class Scenario:
         self.reb_time = defaultdict(dict)
         self.time_start = time_start * 60
         self.duration = duration * 60
+
         # Time demand between nodes initialization
         for i, j in self.edges:
             self.demand_time[i, j] = defaultdict(int)
@@ -709,7 +741,7 @@ class Scenario:
             nodes_pos.append(node.getCoord())
 
         # Clustering
-        kmeans = KMeans(n_clusters=self.N, random_state=0)
+        kmeans = KMeans(n_clusters=self.N, random_state=0, n_init=10)
         kmeans.fit(np.array(nodes_pos))
         labels = kmeans.labels_
         regions_sumo = list()
@@ -718,6 +750,11 @@ class Scenario:
             nodes_id_cluster = []
             nodes_pos_cluster = []
             cluster_center = kmeans.cluster_centers_[region]
+            centroids = kmeans.cluster_centers_
+            # Adjacency matrix calculation
+            distances = cdist(centroids, centroids, 'euclidean')
+            self.adjacency_matrix = (distances < 3500).astype(int)
+
             for idx in range(len(nodes_pos)):
                 if labels[idx] == region:
                     nodes_cluster.append(nodes[idx])
@@ -727,6 +764,7 @@ class Scenario:
             distance = np.linalg.norm(np.array(nodes_pos_cluster) - cluster_center, axis=1)
             # Terminal edges correction and urban center selection
             is_urban = False
+            discarded_node = list()
             while not is_urban:
                 is_urban = True
                 min_idx = np.argmin(distance)
@@ -736,20 +774,28 @@ class Scenario:
                 if node.getType() == 'dead_end':
                     distance[min_idx] = math.inf
                     is_urban = False
+                    discarded_node.append(node.getID())
                     continue
-
+                # Remove terminal edges
+                in_edges = [in_edge for in_edge in in_edges if in_edge.getFromNode().getID() not in discarded_node and in_edge.getFromNode().getType() != 'dead_end']
+                out_edges = [out_edge for out_edge in out_edges if out_edge.getToNode().getID() not in discarded_node and out_edge.getToNode().getType() != 'dead_end']
+                # Discarded node close to terminal edges
+                if len(in_edges) <= 1 or len(out_edges) <= 1:
+                    distance[min_idx] = math.inf
+                    discarded_node.append(node.getID())
+                    is_urban = False
+                    continue
+                # Discard motorway junctions
                 for in_edge in in_edges:
-                    if not in_edge.getIncoming():
-                        in_edges.remove(in_edge)
                     if 'motorway' in in_edge.getType():
                         distance[min_idx] = math.inf
+                        discarded_node.append(node.getID())
                         is_urban = False
 
                 for out_edge in out_edges:
-                    if not out_edge.getOutgoing():
-                        out_edges.remove(out_edge)
                     if 'motorway' in out_edge.getType():
                         distance[min_idx] = math.inf
+                        discarded_node.append(node.getID())
                         is_urban = False
 
             regions_sumo.append({'id': nodes_id_cluster, 'position': np.array(nodes_pos_cluster),
@@ -858,7 +904,8 @@ class Scenario:
                 tf = (self.time_start + t + self.tstep) * 60
                 for i, j in self.edges:
                     if (i, j) in self.demand_input and t in self.demand_input[i, j]:
-                        demand[i, j][t] = np.random.poisson(self.demand_input[i, j][t])
+                        # demand[i, j][t] = np.random.poisson(self.demand_input[i, j][t])
+                        demand[i, j][t] = round(self.demand_input[i, j][t])
                         price[i, j][t] = self.price[i, j][t]
                         if i == j:
                             demand[i, j][t] = 0
@@ -867,11 +914,10 @@ class Scenario:
                             edge_o = self.regions_sumo[i]['out_edges'][np.random.randint(len(self.regions_sumo[i]['out_edges']))].getID()
                             edge_d = self.regions_sumo[j]['in_edges'][np.random.randint(len(self.regions_sumo[j]['in_edges']))].getID()
                             edge_o_length = traci.lane.getLength(edge_o + '_0')
-                            person_id = 'p' + str(t) + 'o' + str(i) + 'd' + str(j) + '#'
                             depart_time = np.random.randint(t0, tf)  # Time instant at which the person appears in the network
                             for person_num in range(demand[i, j][t]):
-                                person_id = person_id + str(person_num)
-                                traci.person.add(personID=person_id, edgeID=edge_o, depart=depart_time, pos=edge_o_length)
+                                person_id = 'p' + str(t) + 'o' + str(i) + 'd' + str(j) + '#' + str(person_num)
+                                traci.person.add(personID=person_id, edgeID=edge_o, depart=depart_time, pos=0)
                                 traci.person.setColor(typeID=person_id, color=(237, 177, 32))
                                 traci.person.appendDrivingStage(personID=person_id, toEdge=edge_d, lines='taxi')
                     else:
@@ -927,7 +973,10 @@ class Scenario:
             for edge_o in self.regions_sumo[node]['in_edges']:
                 for edge_d in self.regions_sumo[node]['out_edges']:
                     route_id = edge_o.getID() + edge_d.getID() + 'init'
-                    traci.route.add(route_id, [edge_o.getID(), edge_d.getID()])
+                    route = traci.simulation.findRoute(edge_o.getID(), edge_d.getID())
+                    traci.route.add(route_id, route.edges)
+                    if not route.edges:
+                        raise Exception(f"{edge_o.getID()} and {edge_d.getID()} can't be connected")
 
     def set_taxi_distribution(self):
         """
