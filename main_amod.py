@@ -65,7 +65,7 @@ device = torch.device("cuda" if args.cuda else "cpu")
 # from that checkpoint
 CHECKPOINT_PATH = ""
 
-random.seed(104)
+random.seed(args.seed)
 
 writer = SummaryWriter()
 
@@ -117,7 +117,7 @@ def run_training(feature_extractor, rl_algorithm, args):
     writer = SummaryWriter(run_dir)
 
     # Register the environment
-    register(id='CustomEnv-v0', entry_point=AMoD(args, beta=1, city='lux'))
+    register(id='CustomEnv-v0', entry_point=AMoD, kwargs={'args': args, 'beta': 1, 'city': 'lux'})
 
     # Create the environment
     env = MyDummyVecEnv([lambda: gym.make('CustomEnv-v0')])
@@ -168,6 +168,7 @@ def run_training(feature_extractor, rl_algorithm, args):
             model = SAC.load(CHECKPOINT_PATH, env=env, device=device)
 
     model.learn(total_timesteps=20000000, callback=eval_callback)
+
 
 # note that a MPNN won't work here because the amod observation space does not have an edge attr
 run_training(FeatureExtractor.GCN, RLAlgorithm.A2C, args)
