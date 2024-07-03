@@ -1,11 +1,14 @@
-from src.envs.amod_env import AMoD
 import os
 import random
 import gymnasium as gym
+import argparse
+import torch
+
+from src.envs.amod_env import AMoD, Scenario
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import A2C, SAC, PPO
-
 from torch.utils.tensorboard import SummaryWriter
+from datetime import date
 from gymnasium.envs.registration import register
 from src.algos.a2c_stable_baselines import CustomMultiInputActorCriticPolicy
 from src.algos.sac_stable_baselines import CustomSACPolicy
@@ -15,6 +18,48 @@ from src.algos.stable_baselines_gcn import GCNExtractor
 from src.algos.stable_baselines_mpnn import MPNNExtractor
 from src.algos.stable_baselines_mlp import MLPExtractor
 
+parser = argparse.ArgumentParser(description='A2C-GNN')
+
+# Simulator parameters
+parser.add_argument('--seed', type=int, default=10, metavar='S',
+                    help='random seed (default: 10)')
+parser.add_argument('--demand_ratio', type=float, default=0.8, metavar='S',
+                    help='demand_ratio (default: 0.8)')
+parser.add_argument('--time_start', type=int, default=7, metavar='S',
+                    help='simulation start time in hours (default: 7 hr)')
+parser.add_argument('--duration', type=int, default=2, metavar='S',
+                    help='episode duration in hours (default: 2 hr)')
+parser.add_argument('--time_horizon', type=int, default=10, metavar='S',
+                    help='matching steps in the future for demand and arriving vehicle forecast (default: 10 min)')
+parser.add_argument('--matching_tstep', type=int, default=1, metavar='S',
+                    help='minutes per timestep (default: 1 min)')
+parser.add_argument('--max_waiting_time', type=int, default=10, metavar='S',
+                    help='maximum passengers waiting time for a ride (default: 10 min)')
+parser.add_argument('--beta', type=float, default=1, metavar='S',   ########## MODIFIED THE DEFUAULT VALUE
+                    help='cost of rebalancing (default: 1)')
+parser.add_argument('--num_regions', type=int, default=8, metavar='S',
+                    help='Number of regions fro spatial aggregation (default: 8)')
+parser.add_argument('--acc_init', type=int, default=90, metavar='S',
+                    help='Initial number of taxis per region (default: 90)')
+# Model parameters
+parser.add_argument('--test', type=bool, default=False,
+                    help='activates test mode for agent evaluation')
+parser.add_argument('--agent_name', type=str, default=date.today().strftime("%Y%m%d")+'_a2c_gnn',
+                    help='Pretrained agent selection for agent evaluation (default:'+date.today().strftime("%Y%m%d")+'_a2c_gnn')
+parser.add_argument('--cplexpath', type=str, default='/opt/ibm/ILOG/CPLEX_Studio2211/opl/bin/x86-64_linux/',
+                    help='defines directory of the CPLEX installation')
+parser.add_argument('--directory', type=str, default='saved_files',
+                    help='defines directory where to save files')
+parser.add_argument('--max_episodes', type=int, default=5000, metavar='N',
+                    help='number of episodes to train agent (default: 16k)')
+parser.add_argument('--max_steps', type=int, default=120, metavar='N',
+                    help='number of steps per episode (default: T=120)')
+parser.add_argument('--no-cuda', type=bool, default=True,
+                    help='disables CUDA training')
+
+args = parser.parse_args()
+args.cuda = not args.no_cuda and torch.cuda.is_available()
+device = torch.device("cuda" if args.cuda else "cpu")
 
 # set this to the path to the saved checkpoint (e.g. amod_checkpoints/SAC/GCN/100000_steps.zip) to resume
 # from that checkpoint
@@ -24,7 +69,6 @@ random.seed(104)
 
 writer = SummaryWriter()
 
-device = "cpu"
 
 class EvaluationCallback(BaseCallback):
     def __init__(self, eval_env, tensorboard_writer, eval_freq=1000, save_freq=10000, verbose=1, rl_algorithm=RLAlgorithm.SAC,
@@ -67,13 +111,13 @@ class EvaluationCallback(BaseCallback):
         return eps_reward
 
 
-def run_training(feature_extractor, rl_algorithm):
+def run_training(feature_extractor, rl_algorithm, args):
     run_dir = os.path.join('amod_runs', f'{rl_algorithm.name}/{feature_extractor.name}')
     os.makedirs(run_dir, exist_ok=True)
     writer = SummaryWriter(run_dir)
 
     # Register the environment
-    register(id='CustomEnv-v0', entry_point=AMoD)
+    register(id='CustomEnv-v0', entry_point=AMoD(args, beta=1, city='lux'))
 
     # Create the environment
     env = MyDummyVecEnv([lambda: gym.make('CustomEnv-v0')])
@@ -89,11 +133,9 @@ def run_training(feature_extractor, rl_algorithm):
         features_extractor_class=features_extractor_class,
         features_extractor_kwargs={
             "hidden_features_dim": 256, # TODO: make this a cmdline argument
-            "num_nodes": env.envs[0].nregion
+            "num_nodes": env.envs[0].nregions
         }
     )
-
-
 
     if rl_algorithm == RLAlgorithm.A2C:
         model = A2C(CustomMultiInputActorCriticPolicy,
@@ -128,4 +170,4 @@ def run_training(feature_extractor, rl_algorithm):
     model.learn(total_timesteps=20000000, callback=eval_callback)
 
 # note that a MPNN won't work here because the amod observation space does not have an edge attr
-run_training(FeatureExtractor.GCN, RLAlgorithm.A2C)
+run_training(FeatureExtractor.GCN, RLAlgorithm.A2C, args)
