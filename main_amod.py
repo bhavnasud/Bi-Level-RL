@@ -142,7 +142,7 @@ def run_training(feature_extractor, rl_algorithm, args):
         model = A2C(CustomMultiInputActorCriticPolicy,
                     env, policy_kwargs=policy_kwargs, verbose=1,
                     use_rms_prop=False, learning_rate=1e-3, ent_coef=0.3, n_steps=1,
-                    gamma=0.99, device=device)
+                    gamma=0.99, device=device, tensorboard_log='/tensorboard_log/')
 
         eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
@@ -152,7 +152,7 @@ def run_training(feature_extractor, rl_algorithm, args):
     elif rl_algorithm == RLAlgorithm.PPO:
         model = PPO(CustomMultiInputActorCriticPolicy, env, policy_kwargs=policy_kwargs,
                     verbose=1, learning_rate=1e-3, ent_coef=0.3, n_steps=1,
-                   gamma=0.99, device=device)
+                   gamma=0.99, device=device, tensorboard_log='/tensorboard_log/')
         eval_callback = EvaluationCallback(env, writer, eval_freq=1000, save_freq=10000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
@@ -161,7 +161,7 @@ def run_training(feature_extractor, rl_algorithm, args):
     else:
         model = SAC(CustomSACPolicy, env, policy_kwargs=policy_kwargs,
                 verbose=1, learning_rate=1e-3, ent_coef=0.3, batch_size=100,
-                gamma=0.99, learning_starts=10, device=device, seed=1)
+                gamma=0.99, learning_starts=10, device=device, seed=1, tensorboard_log='/tensorboard_log/')
         eval_callback = EvaluationCallback(env, writer, eval_freq=100, save_freq=1000,
                                            rl_algorithm=rl_algorithm, feature_extractor=feature_extractor)
         if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
