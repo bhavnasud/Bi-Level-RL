@@ -115,6 +115,7 @@ def run_training(feature_extractor, rl_algorithm, args):
     run_dir = os.path.join('amod_runs', f'{rl_algorithm.name}/{feature_extractor.name}')
     os.makedirs(run_dir, exist_ok=True)
     writer = SummaryWriter(run_dir)
+    total_steps = args.max_episodes * args.duration * 60
 
     # Register the environment
     register(id='CustomEnv-v0', entry_point=AMoD, kwargs={'args': args, 'beta': 1, 'city': 'lux'})
@@ -167,7 +168,7 @@ def run_training(feature_extractor, rl_algorithm, args):
             print("Loading saved model from path ", CHECKPOINT_PATH)
             model = SAC.load(CHECKPOINT_PATH, env=env, device=device)
 
-    model.learn(total_timesteps=20000000, callback=eval_callback)
+    model.learn(total_timesteps=total_steps, callback=eval_callback)
 
 
 # note that a MPNN won't work here because the amod observation space does not have an edge attr
