@@ -70,7 +70,9 @@ class GNNParser:
         super().__init__()
         self.env = env
         self.T = self.env.scenario.thorizon
-        self.s = scale_factor
+        # self.s_acc = 2 / (self.env.acc[0][0] * self.env.nregions)
+        # self.s_dem = 1 / (40 * 10)      # can be updated to be automatic depending on the price and the demand
+        self.s_acc, self.s_dem = self.get_scaling_factors()
         self.grid_h = grid_h
         self.grid_w = grid_w
    
@@ -91,14 +93,14 @@ class GNNParser:
             torch.cat(
                 (
                     torch.tensor(
-                        [obs[0][n][self.env.time + 1] * self.s for n in self.env.region]
+                        [obs[0][n][self.env.time + 1] * self.s_acc for n in self.env.region]
                     )
                     .view(1, 1, self.env.nregions)
                     .float(),
                     torch.tensor(
                         [
                             [
-                                (obs[0][n][self.env.time + 1] + self.env.dacc[n][t]) * self.s for n in self.env.region
+                                (obs[0][n][self.env.time + 1] + self.env.dacc[n][t]) * self.s_acc for n in self.env.region
                             ]
                             for t in range(self.env.time + 1, self.env.time + self.T + 1)
                         ]
@@ -110,7 +112,7 @@ class GNNParser:
                             [
                                 sum(
                                     [
-                                        (self.env.scenario.demand_input[i, j][t]) * (self.env.price[i, j][t]) * self.s for j in self.env.region
+                                        (self.env.scenario.demand_input[i, j][t]) * (self.env.price[i, j][t]) * self.s_dem for j in self.env.region
                                     ]
                                 )
                                 for i in self.env.region
@@ -132,6 +134,17 @@ class GNNParser:
             "node_features": x.numpy(),
             "edge_index": edge_index.numpy()
         }
+
+    def get_scaling_factors(self):
+        t0 = self.env.scenario.time_start
+        tf = self.env.scenario.time_start + self.env.scenario.duration
+        time = [t for t in range(t0, tf)]
+        acc_tot = (self.env.acc[0][0] * self.env.nregions)
+        demand = self.env.scenario.demand_input
+        price = self.env.scenario.price
+        demand_max = max([max([demand[key][t] for key in demand]) for t in time])
+        price_max = max([max([price[key][t] for key in price]) for t in time])
+        return 2/acc_tot, 1/(1.2 * demand_max * price_max)
 
 
 class AMoD(gym.Env):
